@@ -427,7 +427,7 @@ docker-compose up --build
 
 > 이 섹션은 작업이 진행되면서 업데이트할 것.
 
-- [ ] Phase 1 — MVP
+- [x] Phase 1 — MVP (프론트엔드 완료 2026-06-01)
 - [ ] Phase 2 — 실시간 시세 + 차트
 - [ ] Phase 3 — AI 기능
 - [ ] Phase 4 — 거래 + 포트폴리오
