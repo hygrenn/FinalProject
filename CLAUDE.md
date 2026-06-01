@@ -64,7 +64,7 @@ git push origin hwang
 
 Phase 완료 시 dev merge. 상세 작업 목록은 TRD 섹션 15 참고.
 
-- [ ] Phase 1: 인증 + 레이아웃 + 기본 API
+- [x] Phase 1: 인증 + 레이아웃 + 기본 API (프론트엔드 완료 2026-06-01)
 - [ ] Phase 2: 실시간 시세 + 차트
 - [ ] Phase 3: AI 예측 + 시그널
 - [ ] Phase 4: 거래 + 포트폴리오 + 시뮬레이터
