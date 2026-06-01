@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { type AxiosError } from 'axios'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE,
@@ -15,7 +15,7 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (res) => res,
-  async (error) => {
+  async (error: AxiosError) => {
     const original = error.config
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true
@@ -31,6 +31,7 @@ api.interceptors.response.use(
       } catch {
         useAuthTokenRef.clearToken()
         window.location.href = '/'
+        return Promise.reject(error)
       }
     }
     return Promise.reject(error)
