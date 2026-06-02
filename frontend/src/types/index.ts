@@ -115,3 +115,15 @@ export interface MACDPoint {
   signal: number
   histogram: number
 }
+
+export interface CandlePattern {
+  name: string
+  type: 'bullish' | 'bearish' | 'neutral'
+  description: string
+}
+
+export interface MultiframeSignal {
+  timeframe: '1D' | '1W' | '1M'
+  signal: 'BUY' | 'HOLD' | 'SELL'
+  score: number
+}
