@@ -85,7 +85,7 @@ def test_aes_decrypt_rejects_tampered_ciphertext():
     raw = b64.b64decode(encrypted)
     # Flip a byte in the ciphertext body (after the 12-byte nonce)
     tampered = raw[:20] + bytes([raw[20] ^ 0xFF]) + raw[21:]
-    with pytest.raises((ValueError, Exception)):
+    with pytest.raises(ValueError):
         decrypt_aes(b64.b64encode(tampered).decode())
 
 
