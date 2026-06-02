@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -57,7 +58,7 @@ class TokenResponse(BaseModel):
 
 
 class KISKeyRequest(BaseModel):
-    mode: str  # 'paper' | 'real'
+    mode: Literal["paper", "real"]
     app_key: str
     app_secret: str
     account_no: str
@@ -115,7 +116,7 @@ async def login(
 
     raw_rt, hashed_rt = create_refresh_token()
     expires = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    db.add(RefreshToken(user_id=user.id, token_hash=hashed_rt, expires_at=expires))
+    db.add(RefreshToken(user_id=user.id, token_hash=hashed_rt, selector=raw_rt[:16], expires_at=expires))
     await db.commit()
 
     response.set_cookie(
@@ -137,19 +138,20 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
 
     result = await db.execute(
         select(RefreshToken).where(
+            RefreshToken.selector == raw_rt[:16],
             RefreshToken.revoked == False,  # noqa: E712
             RefreshToken.expires_at > datetime.now(timezone.utc),
         )
     )
-    tokens = result.scalars().all()
-    matched = next((t for t in tokens if verify_refresh_token(raw_rt, t.token_hash)), None)
-    if not matched:
+    candidate = result.scalar_one_or_none()
+    if not candidate or not verify_refresh_token(raw_rt, candidate.token_hash):
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    matched = candidate
 
     matched.revoked = True
     raw_new, hashed_new = create_refresh_token()
     expires = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    db.add(RefreshToken(user_id=matched.user_id, token_hash=hashed_new, expires_at=expires))
+    db.add(RefreshToken(user_id=matched.user_id, token_hash=hashed_new, selector=raw_new[:16], expires_at=expires))
     await db.commit()
 
     response.set_cookie(
@@ -168,12 +170,14 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
     raw_rt = request.cookies.get(_REFRESH_COOKIE)
     if raw_rt:
         result = await db.execute(
-            select(RefreshToken).where(RefreshToken.revoked == False)  # noqa: E712
+            select(RefreshToken).where(
+                RefreshToken.selector == raw_rt[:16],
+                RefreshToken.revoked == False,  # noqa: E712
+            )
         )
-        tokens = result.scalars().all()
-        matched = next((t for t in tokens if verify_refresh_token(raw_rt, t.token_hash)), None)
-        if matched:
-            matched.revoked = True
+        candidate = result.scalar_one_or_none()
+        if candidate and verify_refresh_token(raw_rt, candidate.token_hash):
+            candidate.revoked = True
             await db.commit()
     response.delete_cookie(_REFRESH_COOKIE)
     return {"message": "로그아웃되었습니다"}
@@ -202,7 +206,8 @@ async def google_callback(
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if user:
-        user.google_id = google_id
+        if google_id:
+            user.google_id = google_id
         user.is_verified = True
     else:
         user = User(email=email, google_id=google_id, is_verified=True)
@@ -231,9 +236,6 @@ async def register_api_key(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if body.mode not in ("paper", "real"):
-        raise HTTPException(status_code=400, detail="mode는 'paper' 또는 'real'이어야 합니다")
-
     key_enc = encrypt_aes(body.app_key)
     secret_enc = encrypt_aes(body.app_secret)
 

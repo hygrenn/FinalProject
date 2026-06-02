@@ -1,3 +1,5 @@
+import asyncio
+
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
@@ -21,6 +23,8 @@ async def send_verification_email(email: str) -> None:
             f'<a href="{verify_url}">{verify_url}</a>'
         ),
     )
-    import asyncio
-    client = SendGridAPIClient(settings.SENDGRID_API_KEY)
-    await asyncio.to_thread(client.send, message)
+    try:
+        client = SendGridAPIClient(settings.SENDGRID_API_KEY)
+        await asyncio.to_thread(client.send, message)
+    except Exception:
+        pass  # log in production; don't fail registration if email send fails
