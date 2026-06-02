@@ -23,6 +23,7 @@ services:
 
   backend:
     build: ./backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,8 +39,10 @@ services:
     build: ./backend
     command: celery -A tasks worker --loglevel=info
     depends_on:
-      - redis
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     env_file: .env
 
 volumes:
