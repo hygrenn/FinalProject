@@ -16,8 +16,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
-    const original = error.config
-    if (error.response?.status === 401 && !original._retry) {
+    const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined
+    if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true
       try {
         const { data } = await axios.post(
@@ -26,7 +26,7 @@ api.interceptors.response.use(
           { withCredentials: true }
         )
         useAuthTokenRef.setToken(data.access_token)
-        original.headers.Authorization = `Bearer ${data.access_token}`
+        if (original.headers) original.headers.Authorization = `Bearer ${data.access_token}`
         return api(original)
       } catch {
         useAuthTokenRef.clearToken()
