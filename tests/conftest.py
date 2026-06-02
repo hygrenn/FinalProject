@@ -2,7 +2,7 @@ import os
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 os.environ["APP_ENV"] = "test"
 os.environ.setdefault(
@@ -29,9 +29,15 @@ async def test_engine():
 
 @pytest_asyncio.fixture
 async def db_session(test_engine):
-    session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
-    async with session_factory() as session:
-        yield session
+    conn = await test_engine.connect()
+    trans = await conn.begin()
+    session = AsyncSession(bind=conn, expire_on_commit=False)
+
+    yield session
+
+    await session.close()
+    await trans.rollback()
+    await conn.close()
 
 
 @pytest_asyncio.fixture
