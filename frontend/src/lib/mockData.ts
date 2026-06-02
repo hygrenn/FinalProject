@@ -1,5 +1,5 @@
 // frontend/src/lib/mockData.ts
-import type { Candle, Stock } from '@/types'
+import type { Candle, Stock, StockDetail } from '@/types'
 
 export const MOCK_STOCKS: Stock[] = [
   { code: '005930', name: '삼성전자', price: 73400, change_pct: 1.2 },
@@ -41,3 +41,11 @@ function generateCandles(basePrice: number, count: number): Candle[] {
 }
 
 export const MOCK_CANDLES: Candle[] = generateCandles(73000, 120)
+
+export const MOCK_STOCK_DETAILS: Record<string, StockDetail> = {
+  '005930': { open: 72800, high: 74200, low: 72100, volume: 12300000 },
+  '000660': { open: 184000, high: 186500, low: 183500, volume: 5200000 },
+  '035420': { open: 209000, high: 211500, low: 208500, volume: 3100000 },
+  '035720': { open: 41800, high: 42500, low: 41600, volume: 8700000 },
+  '051910': { open: 318000, high: 322000, low: 317000, volume: 1200000 },
+}
