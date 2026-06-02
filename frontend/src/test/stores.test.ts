@@ -45,6 +45,19 @@ describe('stockStore', () => {
     act(() => result.current.removeFromWatchlist(code))
     expect(result.current.watchlist).not.toContain(code)
   })
+
+  it('updateRealtimePrice stores realtime data', () => {
+    const { result } = renderHook(() => useStockStore())
+    act(() => result.current.updateRealtimePrice({ code: '005930', price: 74000, change_pct: 2.1 }))
+    expect(result.current.realtimePrice?.price).toBe(74000)
+  })
+
+  it('setSelectedStock resets realtimePrice', () => {
+    const { result } = renderHook(() => useStockStore())
+    act(() => result.current.updateRealtimePrice({ code: '005930', price: 74000, change_pct: 2.1 }))
+    act(() => result.current.setSelectedStock(MOCK_STOCKS[1]))
+    expect(result.current.realtimePrice).toBeNull()
+  })
 })
 
 describe('uiStore', () => {
