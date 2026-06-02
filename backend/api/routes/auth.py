@@ -1,10 +1,11 @@
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +43,15 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
 
+    @field_validator("password")
+    @classmethod
+    def password_policy(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("비밀번호는 최소 8자 이상이어야 합니다")
+        if v.strip() != v:
+            raise ValueError("비밀번호 앞뒤에 공백을 사용할 수 없습니다")
+        return v
+
 
 class VerifyEmailRequest(BaseModel):
     token: str
@@ -61,7 +71,14 @@ class KISKeyRequest(BaseModel):
     mode: Literal["paper", "real"]
     app_key: str
     app_secret: str
-    account_no: str
+    account_no: str  # 형식: 12345678-01 (종합계좌번호 8자리-상품코드 2자리)
+
+    @field_validator("account_no")
+    @classmethod
+    def validate_account_no(cls, v: str) -> str:
+        if not re.match(r"^\d{8}-\d{2}$", v):
+            raise ValueError("계좌번호 형식이 올바르지 않습니다 (예: 12345678-01)")
+        return v
 
 
 class MeResponse(BaseModel):
@@ -215,8 +232,22 @@ async def google_callback(
     await db.commit()
     await db.refresh(user)
 
+    raw_rt, hashed_rt = create_refresh_token()
+    expires = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    db.add(RefreshToken(user_id=user.id, token_hash=hashed_rt, selector=raw_rt[:16], expires_at=expires))
+    await db.commit()
+
     access_token = create_access_token(str(user.id))
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}/oauth-callback#token={access_token}")
+    redirect = RedirectResponse(url=f"{settings.FRONTEND_URL}/oauth-callback#token={access_token}")
+    redirect.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=raw_rt,
+        httponly=True,
+        secure=settings.APP_ENV != "development",
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+    )
+    return redirect
 
 
 @router.get("/me", response_model=MeResponse)

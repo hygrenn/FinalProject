@@ -1,31 +1,49 @@
 import json
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
+from fastapi import HTTPException
 from pykrx import stock as pykrx_stock
 
 from core.redis_client import get_redis
 
+_KST = ZoneInfo("Asia/Seoul")
+
 
 def _is_market_open() -> bool:
-    now = datetime.now()
+    now = datetime.now(_KST)
     if now.weekday() >= 5:
         return False
     t = now.hour * 100 + now.minute
     return 900 <= t <= 1530
 
 
+def _last_trading_day() -> str:
+    """Return the most recent weekday date string (YYYYMMDD)."""
+    now = datetime.now(_KST)
+    day = now
+    # Step back until weekday (Mon=0 … Fri=4)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day.strftime("%Y%m%d")
+
+
 async def get_ohlcv_from_pykrx(code: str, period: str, interval: str) -> list[dict]:
     period_days = {"1w": 7, "1m": 30, "3m": 90, "6m": 180, "1y": 365, "3y": 1095}
     freq_map = {"day": "d", "week": "w", "month": "m"}
 
-    end = datetime.now()
+    end = datetime.now(_KST)
     start = end - timedelta(days=period_days.get(period, 30))
-    df = pykrx_stock.get_market_ohlcv_by_date(
-        start.strftime("%Y%m%d"),
-        end.strftime("%Y%m%d"),
-        code,
-        freq=freq_map.get(interval, "d"),
-    )
+    try:
+        df = pykrx_stock.get_market_ohlcv_by_date(
+            start.strftime("%Y%m%d"),
+            end.strftime("%Y%m%d"),
+            code,
+            freq=freq_map.get(interval, "d"),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"시세 데이터 조회 실패: {exc}") from exc
+
     if df is None or df.empty:
         return []
 
@@ -64,8 +82,12 @@ async def get_stock_current_price(code: str) -> dict:
     if cached:
         return json.loads(cached)
 
-    today = datetime.now().strftime("%Y%m%d")
-    df = pykrx_stock.get_market_ohlcv_by_date(today, today, code)
+    date_str = _last_trading_day()
+    try:
+        df = pykrx_stock.get_market_ohlcv_by_date(date_str, date_str, code)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"현재가 조회 실패: {exc}") from exc
+
     if df is None or df.empty:
         return {"code": code}
 
@@ -83,43 +105,53 @@ async def get_stock_current_price(code: str) -> dict:
     return data
 
 
-async def get_stock_list(market: str, limit: int, page: int) -> list[dict]:
+def _build_ticker_cache(market_str: str) -> list[dict]:
+    """Fetch tickers with names from pykrx and return as [{code, name}] list."""
+    try:
+        codes = pykrx_stock.get_market_ticker_list(market=market_str)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"종목 목록 조회 실패: {exc}") from exc
+    result = []
+    for code in codes:
+        try:
+            name = pykrx_stock.get_market_ticker_name(code)
+        except Exception:
+            name = ""
+        result.append({"code": code, "name": name})
+    return result
+
+
+async def _get_ticker_list(market: str) -> list[dict]:
+    """Return cached [{code, name}] list for the given market key ('kospi'/'kosdaq')."""
     redis = await get_redis()
     cache_key = f"stocklist:{market.lower()}"
 
     cached = await redis.get(cache_key)
     if cached:
-        tickers = json.loads(cached)
-    else:
-        market_str = "KOSPI" if market.lower() == "kospi" else "KOSDAQ"
-        tickers = list(pykrx_stock.get_market_ticker_list(market=market_str))
-        await redis.setex(cache_key, 86400, json.dumps(tickers))
+        return json.loads(cached)
 
+    market_str = "KOSPI" if market.lower() == "kospi" else "KOSDAQ"
+    tickers = _build_ticker_cache(market_str)
+    await redis.setex(cache_key, 86400, json.dumps(tickers))
+    return tickers
+
+
+async def get_stock_list(market: str, limit: int, page: int) -> list[dict]:
+    tickers = await _get_ticker_list(market)
     start = (page - 1) * limit
-    page_tickers = tickers[start : start + limit]
-    return [{"code": t, "name": pykrx_stock.get_market_ticker_name(t)} for t in page_tickers]
+    return tickers[start : start + limit]
 
 
 async def search_stocks(query: str) -> list[dict]:
-    redis = await get_redis()
-    all_tickers: list[str] = []
-
+    all_tickers: list[dict] = []
     for market in ["kospi", "kosdaq"]:
-        cache_key = f"stocklist:{market}"
-        cached = await redis.get(cache_key)
-        if cached:
-            all_tickers.extend(json.loads(cached))
-        else:
-            tickers = list(pykrx_stock.get_market_ticker_list(market=market.upper()))
-            await redis.setex(cache_key, 86400, json.dumps(tickers))
-            all_tickers.extend(tickers)
+        all_tickers.extend(await _get_ticker_list(market))
 
     q = query.lower()
     results = []
-    for code in all_tickers:
-        name = pykrx_stock.get_market_ticker_name(code)
-        if q in code.lower() or q in name.lower():
-            results.append({"code": code, "name": name})
+    for item in all_tickers:
+        if q in item["code"].lower() or q in item["name"].lower():
+            results.append(item)
         if len(results) >= 20:
             break
     return results
@@ -133,11 +165,11 @@ async def get_indices() -> list[dict]:
     if cached:
         return json.loads(cached)
 
-    today = datetime.now().strftime("%Y%m%d")
+    date_str = _last_trading_day()
     result = []
     for name, code in [("KOSPI", "1"), ("KOSDAQ", "2")]:
         try:
-            df = pykrx_stock.get_index_ohlcv_by_date(today, today, code)
+            df = pykrx_stock.get_index_ohlcv_by_date(date_str, date_str, code)
             if df is not None and not df.empty:
                 row = df.iloc[-1]
                 result.append({

@@ -19,9 +19,9 @@ async def test_register_success(client):
 
 async def test_register_duplicate_email(client):
     with patch("api.routes.auth.send_verification_email"):
-        await client.post("/auth/register", json={"email": "dup@example.com", "password": "pass123"})
+        await client.post("/auth/register", json={"email": "dup@example.com", "password": "pass1234"})
         response = await client.post(
-            "/auth/register", json={"email": "dup@example.com", "password": "pass123"}
+            "/auth/register", json={"email": "dup@example.com", "password": "pass1234"}
         )
     assert response.status_code == 409
 
@@ -31,7 +31,7 @@ async def test_verify_email_success(client):
 
     with patch("api.routes.auth.send_verification_email"):
         await client.post(
-            "/auth/register", json={"email": "verify@example.com", "password": "pass123"}
+            "/auth/register", json={"email": "verify@example.com", "password": "pass1234"}
         )
     token = create_email_token("verify@example.com")
     response = await client.post("/auth/verify-email", json={"token": token})

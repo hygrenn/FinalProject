@@ -103,8 +103,10 @@
 |---|---|---|
 | `tests/test_security.py` | 10 | JWT, bcrypt, AES-256-GCM 유닛 |
 | `tests/test_auth.py` | 14 | 전체 `/auth` 통합 (register→verify→login→refresh→logout→me→kis) |
-| `tests/test_stocks.py` | 6 | Redis 캐시 hit/miss, 각 stocks 엔드포인트 |
+| `tests/test_stocks.py` | 6 | 라우터/서비스 mock 기반 통합 (Redis 캐시 hit/miss, 각 stocks 엔드포인트) |
 | **합계** | **30** | **30/30 passing** |
+
+> 참고: stocks 테스트는 pykrx/Redis 실제 연동이 아닌 mock 기반 통합 테스트입니다. 별도 Redis/pykrx smoke test는 추후 추가 예정.
 
 ---
 

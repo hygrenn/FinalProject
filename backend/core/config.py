@@ -1,4 +1,6 @@
-from pydantic import model_validator
+import base64
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -29,6 +31,23 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES: int = 30
+
+    @field_validator("ENCRYPTION_KEY")
+    @classmethod
+    def validate_encryption_key(cls, v: str) -> str:
+        try:
+            raw = base64.b64decode(v)
+        except Exception:
+            raise ValueError(
+                "ENCRYPTION_KEY must be valid base64. "
+                "Generate with: python -c \"import base64,os; print(base64.b64encode(os.urandom(32)).decode())\""
+            )
+        if len(raw) != 32:
+            raise ValueError(
+                f"ENCRYPTION_KEY must decode to exactly 32 bytes for AES-256 (got {len(raw)}). "
+                "Generate with: python -c \"import base64,os; print(base64.b64encode(os.urandom(32)).decode())\""
+            )
+        return v
 
     @property
     def cors_origins_list(self) -> list[str]:
