@@ -1,68 +1,46 @@
 // frontend/src/components/MainPanel/ChartTab/ChartTab.tsx
-import { useEffect, useRef } from 'react'
-import { createChart, ColorType } from 'lightweight-charts'
 import { useStockStore } from '@/store/stockStore'
-import { MOCK_CANDLES } from '@/lib/mockData'
+import { MOCK_CANDLES, MOCK_STOCK_DETAILS } from '@/lib/mockData'
+import { calculateRSI, calculateMACD } from '@/lib/indicators'
+import { useStockWebSocket } from '@/hooks/useStockWebSocket'
+import { StockInfoBar } from './StockInfoBar'
+import { CandleChart } from './CandleChart'
+import { RSIChart } from './RSIChart'
+import { MACDChart } from './MACDChart'
+import { useMemo } from 'react'
 
 export function ChartTab() {
-  const chartRef = useRef<HTMLDivElement>(null)
-  const { selectedStock } = useStockStore()
+  const { selectedStock, realtimePrice } = useStockStore()
+  const { isConnected } = useStockWebSocket(selectedStock?.code ?? '')
 
-  useEffect(() => {
-    if (!chartRef.current) return
+  const rsiData = useMemo(() => calculateRSI(MOCK_CANDLES), [])
+  const macdData = useMemo(() => calculateMACD(MOCK_CANDLES), [])
 
-    const chart = createChart(chartRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#9ca3af',
-      },
-      grid: {
-        vertLines: { color: '#1f2937' },
-        horzLines: { color: '#1f2937' },
-      },
-      width: chartRef.current.clientWidth,
-      height: chartRef.current.clientHeight,
-    })
-
-    const series = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderVisible: false,
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
-    })
-
-    series.setData(MOCK_CANDLES)
-    chart.timeScale().fitContent()
-
-    const handleResize = () => {
-      if (chartRef.current) {
-        chart.applyOptions({ width: chartRef.current.clientWidth })
-      }
-    }
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      chart.remove()
-    }
-  }, [selectedStock])
+  const stockCode = selectedStock?.code ?? '005930'
+  const detail = MOCK_STOCK_DETAILS[stockCode] ?? MOCK_STOCK_DETAILS['005930']
 
   return (
-    <div className="flex flex-col h-full p-2 gap-2">
-      <div className="flex items-center gap-3 px-2">
-        <span className="font-semibold">{selectedStock?.name}</span>
-        <span className="text-muted-foreground text-sm">{selectedStock?.code}</span>
-        {selectedStock?.price && (
-          <span className="font-bold">{selectedStock.price.toLocaleString()}원</span>
-        )}
-        {selectedStock?.change_pct !== undefined && (
-          <span className={selectedStock.change_pct >= 0 ? 'text-green-500' : 'text-red-500'}>
-            {selectedStock.change_pct >= 0 ? '+' : ''}{selectedStock.change_pct.toFixed(1)}%
-          </span>
-        )}
+    <div className="flex flex-col h-full overflow-hidden">
+      {selectedStock && (
+        <StockInfoBar
+          stock={selectedStock}
+          detail={detail}
+          isLive={isConnected}
+          realtimePrice={realtimePrice?.price}
+          realtimeChangePct={realtimePrice?.change_pct}
+        />
+      )}
+      <div className="flex flex-col flex-1 min-h-0 gap-0.5 p-1">
+        <div className="flex-[3] min-h-0">
+          <CandleChart candles={MOCK_CANDLES} />
+        </div>
+        <div className="flex-1 min-h-0">
+          <RSIChart data={rsiData} />
+        </div>
+        <div className="flex-1 min-h-0">
+          <MACDChart data={macdData} />
+        </div>
       </div>
-      <div ref={chartRef} className="flex-1 min-h-0" />
     </div>
   )
 }
