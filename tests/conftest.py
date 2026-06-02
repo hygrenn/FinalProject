@@ -27,7 +27,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def db_session(test_engine):
     conn = await test_engine.connect()
     trans = await conn.begin()
@@ -40,7 +40,7 @@ async def db_session(test_engine):
     await conn.close()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def client(db_session):
     async def override_db():
         yield db_session
