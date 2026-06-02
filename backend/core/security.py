@@ -12,6 +12,9 @@ from .config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+_aes_key: bytes = base64.b64decode(settings.ENCRYPTION_KEY)
+_aesgcm: AESGCM = AESGCM(_aes_key)
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -66,17 +69,16 @@ def decode_email_token(token: str) -> Optional[str]:
 
 def encrypt_aes(plaintext: str) -> str:
     """AES-256-GCM 암호화. 반환: base64(12-byte nonce + ciphertext)"""
-    key = base64.b64decode(settings.ENCRYPTION_KEY)
-    aesgcm = AESGCM(key)
     nonce = os.urandom(12)
-    ct = aesgcm.encrypt(nonce, plaintext.encode(), None)
+    ct = _aesgcm.encrypt(nonce, plaintext.encode(), None)
     return base64.b64encode(nonce + ct).decode()
 
 
 def decrypt_aes(encrypted: str) -> str:
     """AES-256-GCM 복호화. 입력: base64(12-byte nonce + ciphertext)"""
-    key = base64.b64decode(settings.ENCRYPTION_KEY)
-    aesgcm = AESGCM(key)
-    data = base64.b64decode(encrypted)
-    nonce, ct = data[:12], data[12:]
-    return aesgcm.decrypt(nonce, ct, None).decode()
+    try:
+        data = base64.b64decode(encrypted)
+        nonce, ct = data[:12], data[12:]
+        return _aesgcm.decrypt(nonce, ct, None).decode()
+    except Exception as exc:
+        raise ValueError("AES-GCM decryption failed") from exc
