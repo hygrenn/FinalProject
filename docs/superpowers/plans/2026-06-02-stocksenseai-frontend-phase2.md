@@ -262,11 +262,12 @@ export function calculateMACD(candles: Candle[]): MACDPoint[] {
 
   const macdLine: number[] = []
   const macdTimes: string[] = []
-  const offset = closes.length - ema26.length
+  // ema26[i] = EMA26 at time (i+25), ema12[i+14] = EMA12 at time (i+25)
+  const macdOffset = ema12.length - ema26.length  // = 14
 
   for (let i = 0; i < ema26.length; i++) {
-    macdLine.push(ema12[i + offset] - ema26[i])
-    macdTimes.push(candles[i + offset + 25].time)
+    macdLine.push(ema12[i + macdOffset] - ema26[i])
+    macdTimes.push(candles[i + 25].time)
   }
 
   if (macdLine.length < 9) return []
@@ -394,14 +395,16 @@ describe('MockWebSocket', () => {
     const onopen = vi.fn()
     const ws = new MockWebSocket('ws://localhost/test')
     ws.onopen = onopen
-    vi.runAllTimers()
+    vi.advanceTimersByTime(1)  // fire setTimeout(0) only
+    ws.close()                 // stop interval to prevent infinite tick
     expect(onopen).toHaveBeenCalled()
   })
 
   it('readyState is 1 (OPEN) after connection', () => {
     const ws = new MockWebSocket('ws://localhost/test')
-    vi.runAllTimers()
+    vi.advanceTimersByTime(1)  // fire setTimeout(0) only
     expect(ws.readyState).toBe(1)
+    ws.close()  // cleanup interval
   })
 
   it('calls onmessage with price data on interval', () => {
@@ -656,14 +659,16 @@ describe('useStockWebSocket', () => {
     expect(price?.price).toBeGreaterThan(0)
   })
 
-  it('reconnects when stockCode changes', () => {
-    const { rerender } = renderHook(({ code }) => useStockWebSocket(code), {
+  it('reconnects when stockCode changes — new connection becomes live', () => {
+    const { result, rerender } = renderHook(({ code }) => useStockWebSocket(code), {
       initialProps: { code: '005930' },
     })
-    act(() => vi.runAllTimers())
+    act(() => vi.advanceTimersByTime(1))   // first connection opens
+    expect(result.current.isConnected).toBe(true)
     rerender({ code: '000660' })
-    act(() => vi.runAllTimers())
-    expect(useStockStore.getState().realtimePrice).toBeNull()
+    // cleanup runs (setIsConnected(false)), new ws created
+    act(() => vi.advanceTimersByTime(1))   // new connection opens
+    expect(result.current.isConnected).toBe(true)
   })
 })
 ```
