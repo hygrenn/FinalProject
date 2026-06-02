@@ -1,12 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts'
+import type { IChartApi } from 'lightweight-charts'
 import type { Candle } from '@/types'
 
 interface CandleChartProps {
   candles: Candle[]
+  onChartReady?: (chart: IChartApi) => void
 }
 
-export function CandleChart({ candles }: CandleChartProps) {
+export function CandleChart({ candles, onChartReady }: CandleChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export function CandleChart({ candles }: CandleChartProps) {
 
     series.setData(candles)
     chart.timeScale().fitContent()
+    onChartReady?.(chart)
 
     const handleResize = () => {
       if (chartRef.current) {

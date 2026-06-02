@@ -1,4 +1,4 @@
-import { MOCK_STOCKS, MOCK_CANDLES, MOCK_WATCHLIST, MOCK_STOCK_DETAILS } from '@/lib/mockData'
+import { MOCK_STOCKS, MOCK_CANDLES, MOCK_WATCHLIST, MOCK_STOCK_DETAILS, MOCK_AI_SIGNAL, MOCK_PATTERNS, MOCK_MULTIFRAME, MOCK_PREDICTION } from '@/lib/mockData'
 
 describe('mockData', () => {
   it('MOCK_STOCKS has at least 5 items', () => {
@@ -28,5 +28,22 @@ describe('mockData', () => {
     Object.values(MOCK_STOCK_DETAILS).forEach((d) => {
       expect(d.high).toBeGreaterThanOrEqual(d.low)
     })
+  })
+
+  it('MOCK_AI_SIGNAL has BUY/HOLD/SELL signal', () => {
+    expect(['BUY', 'HOLD', 'SELL']).toContain(MOCK_AI_SIGNAL.signal)
+  })
+
+  it('MOCK_PREDICTION has 5 values per scenario', () => {
+    expect(MOCK_PREDICTION.bullish).toHaveLength(5)
+    expect(MOCK_PREDICTION.base).toHaveLength(5)
+    expect(MOCK_PREDICTION.bearish).toHaveLength(5)
+  })
+
+  it('MOCK_MULTIFRAME covers all timeframes', () => {
+    const frames = MOCK_MULTIFRAME.map((m) => m.timeframe)
+    expect(frames).toContain('1D')
+    expect(frames).toContain('1W')
+    expect(frames).toContain('1M')
   })
 })

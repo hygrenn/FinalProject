@@ -1,4 +1,4 @@
-import type { User, Candle, TabId, StockDetail } from '@/types'
+import type { User, Candle, TabId, StockDetail, CandlePattern, MultiframeSignal } from '@/types'
 
 describe('types', () => {
   it('User type has required fields', () => {
@@ -33,5 +33,15 @@ describe('types', () => {
   it('StockDetail has OHLV fields', () => {
     const detail: StockDetail = { open: 72800, high: 74200, low: 72100, volume: 12300000 }
     expect(detail.high).toBe(74200)
+  })
+
+  it('CandlePattern has name, type, description', () => {
+    const p: CandlePattern = { name: '망치형', type: 'bullish', description: '반전 신호' }
+    expect(p.type).toBe('bullish')
+  })
+
+  it('MultiframeSignal has timeframe, signal, score', () => {
+    const s: MultiframeSignal = { timeframe: '1D', signal: 'BUY', score: 78 }
+    expect(s.signal).toBe('BUY')
   })
 })
