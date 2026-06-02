@@ -95,3 +95,23 @@ export interface Stock {
   price?: number
   change_pct?: number
 }
+
+export interface StockDetail {
+  open: number
+  high: number
+  low: number
+  volume: number
+}
+
+export interface RealtimePrice {
+  code: string
+  price: number
+  change_pct: number
+}
+
+export interface MACDPoint {
+  time: string
+  macd: number
+  signal: number
+  histogram: number
+}

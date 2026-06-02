@@ -1,4 +1,4 @@
-import type { User, Candle, TabId } from '@/types'
+import type { User, Candle, TabId, StockDetail } from '@/types'
 
 describe('types', () => {
   it('User type has required fields', () => {
@@ -28,5 +28,10 @@ describe('types', () => {
   it('TabId covers all tabs', () => {
     const tabs: TabId[] = ['chart', 'ai', 'simulator', 'portfolio', 'screener', 'backtest']
     expect(tabs).toHaveLength(6)
+  })
+
+  it('StockDetail has OHLV fields', () => {
+    const detail: StockDetail = { open: 72800, high: 74200, low: 72100, volume: 12300000 }
+    expect(detail.high).toBe(74200)
   })
 })
