@@ -21,4 +21,6 @@ async def send_verification_email(email: str) -> None:
             f'<a href="{verify_url}">{verify_url}</a>'
         ),
     )
-    SendGridAPIClient(settings.SENDGRID_API_KEY).send(message)
+    import asyncio
+    client = SendGridAPIClient(settings.SENDGRID_API_KEY)
+    await asyncio.to_thread(client.send, message)

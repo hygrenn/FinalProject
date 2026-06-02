@@ -122,7 +122,7 @@ async def login(
         key=_REFRESH_COOKIE,
         value=raw_rt,
         httponly=True,
-        secure=False,
+        secure=settings.APP_ENV != "development",
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
     )
@@ -156,7 +156,7 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
         key=_REFRESH_COOKIE,
         value=raw_new,
         httponly=True,
-        secure=False,
+        secure=settings.APP_ENV != "development",
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
     )
@@ -246,12 +246,14 @@ async def register_api_key(
         current_user.kis_real_secret_enc = secret_enc
         current_user.kis_real_account_no = body.account_no
 
+    test_result = None
     if settings.APP_ENV != "development":
         from services.kis_service import test_kis_connection
         ok = await test_kis_connection(body.app_key, body.app_secret, body.mode)
+        test_result = ok
         if not ok:
             raise HTTPException(status_code=400, detail="KIS API 키 검증에 실패했습니다")
 
     current_user.mode = body.mode
     await db.commit()
-    return {"message": "KIS API 키가 등록되었습니다"}
+    return {"message": "KIS API 키가 등록되었습니다", "test_result": test_result}
