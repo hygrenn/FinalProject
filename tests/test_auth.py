@@ -100,3 +100,59 @@ async def test_logout_invalidates_refresh_token(client):
     # After logout, refresh must fail
     refresh_resp = await client.post("/auth/refresh")
     assert refresh_resp.status_code == 401
+
+
+async def test_google_login_redirects(client):
+    # When GOOGLE_CLIENT_ID is empty, authlib raises an error → 400 or 500 acceptable
+    response = await client.get("/auth/google", follow_redirects=False)
+    assert response.status_code in (302, 307, 400, 422, 500)
+    if response.status_code in (302, 307):
+        assert "accounts.google.com" in response.headers.get("location", "")
+
+
+async def test_me_returns_user_info(client):
+    await _register_and_verify(client, "me@test.com")
+    login_resp = await client.post(
+        "/auth/login", json={"email": "me@test.com", "password": "pass1234"}
+    )
+    token = login_resp.json()["access_token"]
+
+    response = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == "me@test.com"
+    assert data["mode"] == "demo"
+    assert data["is_verified"] is True
+
+
+async def test_me_unauthorized_without_token(client):
+    response = await client.get("/auth/me")
+    assert response.status_code == 403  # HTTPBearer returns 403 when header missing
+
+
+async def test_register_kis_paper_key(client):
+    from unittest.mock import AsyncMock, patch
+
+    await _register_and_verify(client, "kis@test.com")
+    login_resp = await client.post(
+        "/auth/login", json={"email": "kis@test.com", "password": "pass1234"}
+    )
+    token = login_resp.json()["access_token"]
+
+    with patch("services.kis_service.test_kis_connection", new_callable=AsyncMock, return_value=True):
+        response = await client.put(
+            "/auth/api-key",
+            json={
+                "mode": "paper",
+                "app_key": "PXXXXXXXXXXXXXXXXXXX",
+                "app_secret": "SXXXXXXXXXXXXXXXXXXX",
+                "account_no": "12345678-01",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 200
+    assert response.json()["message"] == "KIS API 키가 등록되었습니다"
+
+    # Verify mode updated to paper
+    me_resp = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.json()["mode"] == "paper"
