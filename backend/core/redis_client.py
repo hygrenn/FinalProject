@@ -2,7 +2,7 @@ import redis.asyncio as aioredis
 
 from .config import settings
 
-_redis: aioredis.Redis = None
+_redis: aioredis.Redis | None = None
 
 
 async def get_redis() -> aioredis.Redis:

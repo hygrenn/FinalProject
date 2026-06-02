@@ -1,4 +1,4 @@
-from typing import List
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -31,8 +31,17 @@ class Settings(BaseSettings):
     EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES: int = 30
 
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+
+    @model_validator(mode="after")
+    def assemble_db_url(self) -> "Settings":
+        if not self.DATABASE_URL or self.DATABASE_URL == "postgresql+asyncpg://stocksense:stocksense@localhost:5432/stocksense":
+            self.DATABASE_URL = (
+                f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+                f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            )
+        return self
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
