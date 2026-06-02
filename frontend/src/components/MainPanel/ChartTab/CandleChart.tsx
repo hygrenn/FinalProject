@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { createChart, ColorType } from 'lightweight-charts'
+import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts'
 import type { Candle } from '@/types'
 
 interface CandleChartProps {
@@ -25,7 +25,7 @@ export function CandleChart({ candles }: CandleChartProps) {
       height: chartRef.current.clientHeight,
     })
 
-    const series = chart.addCandlestickSeries({
+    const series = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e',
       downColor: '#ef4444',
       borderVisible: false,

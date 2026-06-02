@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { createChart, ColorType } from 'lightweight-charts'
+import { createChart, ColorType, LineSeries } from 'lightweight-charts'
 
 interface RSIChartProps {
   data: { time: string; value: number }[]
@@ -26,11 +26,11 @@ export function RSIChart({ data }: RSIChartProps) {
       timeScale: { visible: false },
     })
 
-    const series = chart.addLineSeries({ color: '#58a6ff', lineWidth: 1 })
+    const series = chart.addSeries(LineSeries, { color: '#58a6ff', lineWidth: 1 })
     series.setData(data)
 
-    const overbought = chart.addLineSeries({ color: '#f85149', lineWidth: 1, lineStyle: 2 })
-    const oversold = chart.addLineSeries({ color: '#3fb950', lineWidth: 1, lineStyle: 2 })
+    const overbought = chart.addSeries(LineSeries, { color: '#f85149', lineWidth: 1, lineStyle: 2 })
+    const oversold = chart.addSeries(LineSeries, { color: '#3fb950', lineWidth: 1, lineStyle: 2 })
     if (data.length > 0) {
       overbought.setData([{ time: data[0].time, value: 70 }, { time: data[data.length - 1].time, value: 70 }])
       oversold.setData([{ time: data[0].time, value: 30 }, { time: data[data.length - 1].time, value: 30 }])
