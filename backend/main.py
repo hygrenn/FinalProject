@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware.rate_limit import limiter
 from api.routes import auth as auth_router
+from api.routes import stocks as stocks_router
 from core.config import settings
 from core.redis_client import close_redis
 
@@ -35,6 +36,7 @@ app.add_middleware(
 
 
 app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
+app.include_router(stocks_router.router, prefix="/stocks", tags=["stocks"])
 
 
 @app.get("/health")
