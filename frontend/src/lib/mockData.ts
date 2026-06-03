@@ -1,5 +1,5 @@
 // frontend/src/lib/mockData.ts
-import type { Candle, Stock, StockDetail, CandlePattern, MultiframeSignal } from '@/types'
+import type { Candle, Stock, StockDetail, CandlePattern, MultiframeSignal, OrderBookEntry, PortfolioMetrics, Holding } from '@/types'
 
 export const MOCK_STOCKS: Stock[] = [
   { code: '005930', name: '삼성전자', price: 73400, change_pct: 1.2 },
@@ -89,3 +89,58 @@ export const MOCK_MULTIFRAME: MultiframeSignal[] = [
   { timeframe: '1W', signal: 'HOLD', score: 52 },
   { timeframe: '1M', signal: 'BUY', score: 65 },
 ]
+
+export const MOCK_ORDER_BOOK = {
+  asks: [
+    { price: 74200, quantity: 1200 },
+    { price: 74100, quantity: 850 },
+    { price: 74000, quantity: 2300 },
+    { price: 73900, quantity: 600 },
+    { price: 73800, quantity: 1800 },
+    { price: 73700, quantity: 950 },
+    { price: 73600, quantity: 3100 },
+    { price: 73500, quantity: 720 },
+    { price: 73450, quantity: 1500 },
+    { price: 73420, quantity: 2800 },
+  ] as OrderBookEntry[],
+  bids: [
+    { price: 73400, quantity: 4200 },
+    { price: 73380, quantity: 1100 },
+    { price: 73350, quantity: 2600 },
+    { price: 73300, quantity: 800 },
+    { price: 73250, quantity: 1900 },
+    { price: 73200, quantity: 650 },
+    { price: 73150, quantity: 3400 },
+    { price: 73100, quantity: 1200 },
+    { price: 73050, quantity: 2100 },
+    { price: 73000, quantity: 900 },
+  ] as OrderBookEntry[],
+}
+
+export const MOCK_HOLDINGS: Holding[] = [
+  { stock_code: '005930', stock_name: '삼성전자', quantity: 10, avg_price: 70000, current_price: 73400, profit_loss: 34000, return_pct: 4.86, ai_signal: 'BUY' },
+  { stock_code: '000660', stock_name: 'SK하이닉스', quantity: 5, avg_price: 180000, current_price: 185000, profit_loss: 25000, return_pct: 2.78, ai_signal: 'HOLD' },
+  { stock_code: '035420', stock_name: 'NAVER', quantity: 3, avg_price: 220000, current_price: 210000, profit_loss: -30000, return_pct: -4.55, ai_signal: 'SELL' },
+]
+
+export const MOCK_PORTFOLIO_PERFORMANCE: { date: string; value: number }[] = Array.from({ length: 30 }, (_, i) => {
+  const date = new Date('2026-05-01')
+  date.setDate(date.getDate() + i)
+  return {
+    date: date.toISOString().split('T')[0],
+    value: 5000000 + Math.round((Math.random() - 0.45) * 100000 * (i + 1)),
+  }
+})
+
+export const MOCK_PORTFOLIO_METRICS: PortfolioMetrics = {
+  total_value: 5290000,
+  total_return_pct: 5.8,
+  mdd: -3.2,
+}
+
+export const MOCK_BACKTEST_RESULT = {
+  return_pct: 18.4,
+  win_rate: 62.5,
+  mdd: -7.3,
+  trades: 24,
+}

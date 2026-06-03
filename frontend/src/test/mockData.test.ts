@@ -1,4 +1,4 @@
-import { MOCK_STOCKS, MOCK_CANDLES, MOCK_WATCHLIST, MOCK_STOCK_DETAILS, MOCK_AI_SIGNAL, MOCK_PATTERNS, MOCK_MULTIFRAME, MOCK_PREDICTION } from '@/lib/mockData'
+import { MOCK_STOCKS, MOCK_CANDLES, MOCK_WATCHLIST, MOCK_STOCK_DETAILS, MOCK_AI_SIGNAL, MOCK_PATTERNS, MOCK_MULTIFRAME, MOCK_PREDICTION, MOCK_ORDER_BOOK, MOCK_HOLDINGS } from '@/lib/mockData'
 
 describe('mockData', () => {
   it('MOCK_STOCKS has at least 5 items', () => {
@@ -45,5 +45,15 @@ describe('mockData', () => {
     expect(frames).toContain('1D')
     expect(frames).toContain('1W')
     expect(frames).toContain('1M')
+  })
+
+  it('MOCK_ORDER_BOOK has 10 asks and 10 bids', () => {
+    expect(MOCK_ORDER_BOOK.asks).toHaveLength(10)
+    expect(MOCK_ORDER_BOOK.bids).toHaveLength(10)
+  })
+
+  it('MOCK_HOLDINGS has at least 1 holding', () => {
+    expect(MOCK_HOLDINGS.length).toBeGreaterThan(0)
+    expect(MOCK_HOLDINGS[0]).toHaveProperty('stock_code')
   })
 })
