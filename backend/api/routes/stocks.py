@@ -41,9 +41,11 @@ async def get_stock_chart(
 ):
     if interval in _INTRADAY_INTERVALS:
         data = await kis_market_service.get_intraday_ohlcv(code, interval)
+        effective_period = "1d"
     else:
         data = await market_service.get_ohlcv_cached(code, period, interval)
-    return {"code": code, "period": period, "interval": interval, "data": data}
+        effective_period = period
+    return {"code": code, "period": effective_period, "interval": interval, "data": data}
 
 
 @router.get("/{code}/orderbook")
