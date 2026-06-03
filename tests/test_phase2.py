@@ -336,3 +336,71 @@ async def test_pool_publishes_to_redis_on_message():
     assert channel == "stock:005930"
     data = _json.loads(payload)
     assert data["price"] == 60100
+
+
+# ─── Task 5: SSE Streaming Endpoint ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sse_endpoint_streams_redis_messages(client):
+    """Redis Pub/Sub 메시지가 SSE 스트림으로 나온다."""
+    mock_pubsub = AsyncMock()
+    mock_pubsub.subscribe = AsyncMock()
+    mock_pubsub.unsubscribe = AsyncMock()
+
+    received_messages = [
+        {"type": "message", "channel": b"stock:005930", "data": b'{"type":"execution","code":"005930","price":60100}'},
+    ]
+
+    async def mock_listen():
+        for msg in received_messages:
+            yield msg
+
+    mock_pubsub.listen = mock_listen
+
+    mock_redis = AsyncMock()
+    mock_redis.pubsub.return_value = mock_pubsub
+
+    with patch("api.routes.realtime.get_redis", return_value=mock_redis), \
+         patch("api.routes.realtime.kis_pool") as mock_pool:
+        mock_pool.subscribe = AsyncMock()
+        mock_pool.unsubscribe = AsyncMock()
+
+        async with client.stream("GET", "/ws/stocks/005930") as response:
+            assert response.status_code == 200
+            assert "text/event-stream" in response.headers["content-type"]
+            lines = []
+            async for line in response.aiter_lines():
+                lines.append(line)
+                if any("60100" in l for l in lines):
+                    break
+
+    assert any("60100" in line for line in lines)
+    mock_pool.subscribe.assert_called_once_with("005930")
+
+
+@pytest.mark.asyncio
+async def test_sse_endpoint_unsubscribes_on_disconnect(client):
+    """클라이언트 종료 시 pool.unsubscribe가 호출된다."""
+    mock_pubsub = AsyncMock()
+    mock_pubsub.subscribe = AsyncMock()
+    mock_pubsub.unsubscribe = AsyncMock()
+
+    async def mock_listen_empty():
+        return
+        yield  # make it an async generator
+
+    mock_pubsub.listen = mock_listen_empty
+
+    mock_redis = AsyncMock()
+    mock_redis.pubsub.return_value = mock_pubsub
+
+    with patch("api.routes.realtime.get_redis", return_value=mock_redis), \
+         patch("api.routes.realtime.kis_pool") as mock_pool:
+        mock_pool.subscribe = AsyncMock()
+        mock_pool.unsubscribe = AsyncMock()
+
+        async with client.stream("GET", "/ws/stocks/005930") as response:
+            async for _ in response.aiter_lines():
+                break
+
+    mock_pool.unsubscribe.assert_called_once_with("005930")
