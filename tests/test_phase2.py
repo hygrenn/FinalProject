@@ -74,3 +74,24 @@ async def test_get_approval_key_fetches_and_caches():
     assert key == "approv_xyz"
     args = mock_redis.setex.call_args[0]
     assert args[1] == 82800
+
+
+@pytest.mark.asyncio
+async def test_get_access_token_raises_502_on_kis_error():
+    """KIS가 에러를 반환하면 HTTPException 502를 발생시킨다."""
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+
+    with patch("services.kis_token_service.get_redis", return_value=mock_redis), \
+         patch("httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=Exception("connection refused"))
+        mock_client_cls.return_value = mock_client
+
+        from fastapi import HTTPException
+        from services.kis_token_service import get_access_token
+        with pytest.raises(HTTPException) as exc_info:
+            await get_access_token("key", "secret", "paper")
+    assert exc_info.value.status_code == 502
