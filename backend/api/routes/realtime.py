@@ -21,7 +21,7 @@ async def stock_stream(code: str) -> EventSourceResponse:
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     data = message["data"]
-                    yield {"data": data.decode() if isinstance(data, bytes) else data}
+                    yield {"data": data.decode("utf-8", errors="replace") if isinstance(data, bytes) else data}
         finally:
             await kis_pool.unsubscribe(code)
             await pubsub.unsubscribe(f"stock:{code}")
