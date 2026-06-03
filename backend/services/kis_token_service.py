@@ -1,4 +1,6 @@
 # backend/services/kis_token_service.py
+import hashlib
+
 import httpx
 from fastapi import HTTPException
 
@@ -12,9 +14,13 @@ def _base(mode: str) -> str:
     return _KIS_PAPER if mode == "paper" else _KIS_REAL
 
 
+def _key_digest(app_key: str) -> str:
+    return hashlib.sha256(app_key.encode()).hexdigest()[:16]
+
+
 async def get_access_token(app_key: str, app_secret: str, mode: str) -> str:
     redis = await get_redis()
-    cache_key = f"access_token:{mode}:{app_key[:8]}"
+    cache_key = f"access_token:{mode}:{_key_digest(app_key)}"
 
     cached = await redis.get(cache_key)
     if cached:
@@ -40,7 +46,7 @@ async def get_access_token(app_key: str, app_secret: str, mode: str) -> str:
 
 async def get_approval_key(app_key: str, app_secret: str, mode: str) -> str:
     redis = await get_redis()
-    cache_key = f"approval_key:{mode}:{app_key[:8]}"
+    cache_key = f"approval_key:{mode}:{_key_digest(app_key)}"
 
     cached = await redis.get(cache_key)
     if cached:

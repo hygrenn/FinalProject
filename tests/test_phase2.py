@@ -124,7 +124,7 @@ async def test_get_orderbook_parses_kis_response():
     }
     fake_resp = MagicMock()
     fake_resp.status_code = 200
-    fake_resp.json.return_value = {"output1": fake_output1}
+    fake_resp.json.return_value = {"rt_cd": "0", "output1": fake_output1}
 
     mock_redis = AsyncMock()
     mock_redis.get.return_value = None
@@ -346,6 +346,7 @@ async def test_sse_endpoint_streams_redis_messages(client):
     mock_pubsub = AsyncMock()
     mock_pubsub.subscribe = AsyncMock()
     mock_pubsub.unsubscribe = AsyncMock()
+    mock_pubsub.aclose = AsyncMock()
 
     received_messages = [
         {"type": "message", "channel": b"stock:005930", "data": b'{"type":"execution","code":"005930","price":60100}'},
@@ -380,10 +381,11 @@ async def test_sse_endpoint_streams_redis_messages(client):
 
 @pytest.mark.asyncio
 async def test_sse_endpoint_unsubscribes_on_disconnect(client):
-    """클라이언트 종료 시 pool.unsubscribe가 호출된다."""
+    """클라이언트 종료 시 pool.unsubscribe와 pubsub.aclose가 호출된다."""
     mock_pubsub = AsyncMock()
     mock_pubsub.subscribe = AsyncMock()
     mock_pubsub.unsubscribe = AsyncMock()
+    mock_pubsub.aclose = AsyncMock()
 
     async def mock_listen_empty():
         return
@@ -404,3 +406,76 @@ async def test_sse_endpoint_unsubscribes_on_disconnect(client):
                 break
 
     mock_pool.unsubscribe.assert_called_once_with("005930")
+    mock_pubsub.aclose.assert_called_once()
+
+
+# ─── Additional: Batch Calc & Session Routing ─────────────────────────────────
+
+def test_pool_batch_calc_boundary():
+    """41종목까지 세션 1개, 42번째부터 세션 2개 필요."""
+    import math
+    from services.websocket_service import MAX_PER_SESSION
+    for n in range(1, MAX_PER_SESSION + 1):
+        assert max(1, math.ceil(n / MAX_PER_SESSION)) == 1
+    assert max(1, math.ceil((MAX_PER_SESSION + 1) / MAX_PER_SESSION)) == 2
+    assert max(1, math.ceil((MAX_PER_SESSION * 2) / MAX_PER_SESSION)) == 2
+    assert max(1, math.ceil((MAX_PER_SESSION * 2 + 1) / MAX_PER_SESSION)) == 3
+
+
+@pytest.mark.asyncio
+async def test_pool_unsubscribe_targets_original_session():
+    """unsubscribe 메시지가 subscribe 시 사용한 세션으로 전송된다."""
+    with patch("services.websocket_service.settings") as mock_settings, \
+         patch("services.websocket_service.get_approval_key", return_value="appkey"):
+        mock_settings.SYSTEM_KIS_APP_KEY = "key"
+        mock_settings.SYSTEM_KIS_APP_SECRET = "secret"
+        mock_settings.SYSTEM_KIS_MODE = "paper"
+
+        from services.websocket_service import KISWebSocketPool
+        pool = KISWebSocketPool()
+
+        session_0 = AsyncMock()
+        session_0.closed = False
+        session_1 = AsyncMock()
+        session_1.closed = False
+        pool._sessions = [session_0, session_1]
+        pool._get_session = AsyncMock(return_value=session_0)
+
+        await pool.subscribe("005930")
+        assert pool._symbol_session.get("005930") == 0
+
+        pool._get_session = AsyncMock(return_value=session_1)
+        await pool.unsubscribe("005930")
+
+        assert session_0.send.call_count == 2  # subscribe + unsubscribe both on session_0
+        session_1.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_orderbook_raises_502_on_kis_api_level_error():
+    """KIS rt_cd != '0' 응답은 HTTPException 502를 반환한다."""
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.json.return_value = {"rt_cd": "1", "msg_cd": "MCA00004", "msg1": "잘못된 요청"}
+
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+
+    with patch("services.kis_market_service.settings") as mock_settings, \
+         patch("services.kis_market_service.get_access_token", return_value="tok"), \
+         patch("services.kis_market_service.get_redis", return_value=mock_redis), \
+         patch("httpx.AsyncClient") as mock_cls:
+        mock_settings.SYSTEM_KIS_APP_KEY = "key"
+        mock_settings.SYSTEM_KIS_APP_SECRET = "secret"
+        mock_settings.SYSTEM_KIS_MODE = "paper"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=fake_resp)
+        mock_cls.return_value = mock_client
+
+        from fastapi import HTTPException
+        from services.kis_market_service import get_orderbook
+        with pytest.raises(HTTPException) as exc_info:
+            await get_orderbook("005930")
+    assert exc_info.value.status_code == 502

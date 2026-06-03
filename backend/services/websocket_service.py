@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import math
 from collections import defaultdict
 
 import websockets
@@ -58,7 +59,10 @@ class KISWebSocketPool:
             return
         self._subscriptions[code] += 1
         if self._subscriptions[code] == 1:
-            await self._send_subscribe(code, tr_type="1")
+            session = await self._get_session()
+            if session:
+                self._symbol_session[code] = self._sessions.index(session)
+                await self._send_subscribe(code, tr_type="1", session=session)
 
     async def unsubscribe(self, code: str) -> None:
         if not settings.SYSTEM_KIS_APP_KEY:
@@ -67,9 +71,11 @@ class KISWebSocketPool:
             return
         self._subscriptions[code] -= 1
         if self._subscriptions[code] == 0:
-            await self._send_subscribe(code, tr_type="2")
+            idx = self._symbol_session.pop(code, None)
+            if idx is not None and idx < len(self._sessions) and not self._sessions[idx].closed:
+                await self._send_subscribe(code, tr_type="2", session=self._sessions[idx])
 
-    async def _send_subscribe(self, code: str, tr_type: str) -> None:
+    async def _send_subscribe(self, code: str, tr_type: str, session=None) -> None:
         approval_key = await get_approval_key(
             settings.SYSTEM_KIS_APP_KEY,
             settings.SYSTEM_KIS_APP_SECRET,
@@ -84,14 +90,14 @@ class KISWebSocketPool:
             },
             "body": {"input": {"tr_id": "H0STCNT0", "tr_key": code}},
         }
-        session = await self._get_session()
-        if session:
-            await session.send(json.dumps(msg))
+        target = session if session is not None else await self._get_session()
+        if target:
+            await target.send(json.dumps(msg))
 
     async def _get_session(self):
         active = [s for s in self._sessions if not s.closed]
         subscribed_count = sum(1 for v in self._subscriptions.values() if v > 0)
-        needed = (subscribed_count // MAX_PER_SESSION) + 1
+        needed = max(1, math.ceil(subscribed_count / MAX_PER_SESSION))
 
         while len(active) < needed:
             try:

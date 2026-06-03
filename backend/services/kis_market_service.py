@@ -18,6 +18,11 @@ def _base(mode: str) -> str:
     )
 
 
+def _ensure_kis_ok(body: dict) -> None:
+    if body.get("rt_cd") != "0":
+        raise HTTPException(status_code=502, detail=f"KIS API 오류: {body.get('msg1', '')}")
+
+
 def _kis_headers(access_token: str, tr_id: str) -> dict:
     return {
         "Authorization": f"Bearer {access_token}",
@@ -51,7 +56,11 @@ async def get_orderbook(code: str) -> dict:
                 params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
             )
             resp.raise_for_status()
-            out = resp.json().get("output1", {})
+            body = resp.json()
+            _ensure_kis_ok(body)
+            out = body.get("output1", {})
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"호가 조회 실패: {exc}") from exc
 
@@ -91,7 +100,11 @@ async def get_recent_trades(code: str) -> list[dict]:
                 params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
             )
             resp.raise_for_status()
-            output2 = resp.json().get("output2", [])
+            body = resp.json()
+            _ensure_kis_ok(body)
+            output2 = body.get("output2", [])
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"체결 조회 실패: {exc}") from exc
 
@@ -145,7 +158,11 @@ async def get_intraday_ohlcv(code: str, interval: str) -> list[dict]:
                 },
             )
             resp.raise_for_status()
-            output2 = resp.json().get("output2", [])
+            body = resp.json()
+            _ensure_kis_ok(body)
+            output2 = body.get("output2", [])
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"분봉 조회 실패: {exc}") from exc
 
