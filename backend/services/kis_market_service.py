@@ -114,6 +114,10 @@ async def get_intraday_ohlcv(code: str, interval: str) -> list[dict]:
     if not settings.SYSTEM_KIS_APP_KEY:
         return []
 
+    _VALID_INTERVALS = {"1min", "5min", "15min", "1h"}
+    if interval not in _VALID_INTERVALS:
+        raise HTTPException(status_code=400, detail=f"지원하지 않는 interval: {interval}. 허용: {sorted(_VALID_INTERVALS)}")
+
     redis = await get_redis()
     cache_key = f"intraday:{code}:{interval}"
     cached = await redis.get(cache_key)
@@ -157,5 +161,6 @@ async def get_intraday_ohlcv(code: str, interval: str) -> list[dict]:
         }
         for row in output2
     ]
-    await redis.setex(cache_key, 60, json.dumps(candles))
+    ttl = 60 if _is_market_open() else 3600
+    await redis.setex(cache_key, ttl, json.dumps(candles))
     return candles

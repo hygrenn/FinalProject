@@ -169,3 +169,43 @@ async def test_get_recent_trades_returns_empty_when_no_system_key():
         from services.kis_market_service import get_recent_trades
         result = await get_recent_trades("005930")
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_orderbook_raises_502_on_kis_error():
+    """KIS 호가 API 실패 시 HTTPException 502를 반환한다."""
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+
+    with patch("services.kis_market_service.settings") as mock_settings, \
+         patch("services.kis_market_service.get_access_token", return_value="tok"), \
+         patch("services.kis_market_service.get_redis", return_value=mock_redis), \
+         patch("httpx.AsyncClient") as mock_cls:
+        mock_settings.SYSTEM_KIS_APP_KEY = "key"
+        mock_settings.SYSTEM_KIS_APP_SECRET = "secret"
+        mock_settings.SYSTEM_KIS_MODE = "paper"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(side_effect=Exception("timeout"))
+        mock_cls.return_value = mock_client
+
+        from fastapi import HTTPException
+        from services.kis_market_service import get_orderbook
+        with pytest.raises(HTTPException) as exc_info:
+            await get_orderbook("005930")
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_get_intraday_ohlcv_rejects_invalid_interval():
+    """알 수 없는 interval은 HTTPException 400을 반환한다."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = "key"
+        mock_settings.SYSTEM_KIS_APP_SECRET = "secret"
+        mock_settings.SYSTEM_KIS_MODE = "paper"
+        from fastapi import HTTPException
+        from services.kis_market_service import get_intraday_ohlcv
+        with pytest.raises(HTTPException) as exc_info:
+            await get_intraday_ohlcv("005930", "30min")
+    assert exc_info.value.status_code == 400
