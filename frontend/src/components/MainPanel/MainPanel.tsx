@@ -1,7 +1,9 @@
-// frontend/src/components/MainPanel/MainPanel.tsx
 import { useUIStore } from '@/store/uiStore'
 import { ChartTab } from './ChartTab/ChartTab'
 import { AITab } from './AITab/AITab'
+import { PortfolioTab } from './PortfolioTab/PortfolioTab'
+import { SimulatorTab } from './SimulatorTab/SimulatorTab'
+import { BacktestTab } from './BacktestTab/BacktestTab'
 import { cn } from '@/lib/utils'
 import type { TabId } from '@/types'
 
@@ -14,12 +16,10 @@ const ALL_TABS: { id: TabId; label: string }[] = [
   { id: 'backtest', label: '백테스트' },
 ]
 
-const PLACEHOLDER_TABS = ['simulator', 'portfolio', 'screener', 'backtest'] as const
-
 function PlaceholderTab({ name }: { name: string }) {
   return (
     <div className="flex items-center justify-center h-full text-muted-foreground">
-      {name} — Phase 4에서 구현 예정
+      {name} — 준비 중
     </div>
   )
 }
@@ -29,7 +29,6 @@ export function MainPanel() {
 
   return (
     <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">
-      {/* 데스크탑 탭 헤더 (모바일에서는 숨김) */}
       <div className="hidden md:flex border-b border-border bg-card shrink-0 overflow-x-auto">
         {ALL_TABS.map((tab) => (
           <button
@@ -47,11 +46,12 @@ export function MainPanel() {
         ))}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === 'chart' && <ChartTab />}
-        {activeTab === 'ai' && <AITab />}
-        {PLACEHOLDER_TABS.map((tab) =>
-          activeTab === tab ? <PlaceholderTab key={tab} name={tab} /> : null
-        )}
+        {activeTab === 'chart'     && <ChartTab />}
+        {activeTab === 'ai'        && <AITab />}
+        {activeTab === 'simulator' && <SimulatorTab />}
+        {activeTab === 'portfolio' && <PortfolioTab />}
+        {activeTab === 'screener'  && <PlaceholderTab name="스크리너" />}
+        {activeTab === 'backtest'  && <BacktestTab />}
       </div>
     </div>
   )
