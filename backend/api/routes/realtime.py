@@ -14,7 +14,7 @@ router = APIRouter()
 async def stock_stream(code: str) -> EventSourceResponse:
     async def event_generator() -> AsyncGenerator[dict, None]:
         redis = await get_redis()
-        pubsub = await redis.pubsub()
+        pubsub = redis.pubsub()
         await pubsub.subscribe(f"stock:{code}")
         await kis_pool.subscribe(code)
         try:

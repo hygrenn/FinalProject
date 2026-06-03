@@ -358,7 +358,7 @@ async def test_sse_endpoint_streams_redis_messages(client):
     mock_pubsub.listen = mock_listen
 
     mock_redis = AsyncMock()
-    mock_redis.pubsub.return_value = mock_pubsub
+    mock_redis.pubsub = MagicMock(return_value=mock_pubsub)
 
     with patch("api.routes.realtime.get_redis", return_value=mock_redis), \
          patch("api.routes.realtime.kis_pool") as mock_pool:
@@ -392,7 +392,7 @@ async def test_sse_endpoint_unsubscribes_on_disconnect(client):
     mock_pubsub.listen = mock_listen_empty
 
     mock_redis = AsyncMock()
-    mock_redis.pubsub.return_value = mock_pubsub
+    mock_redis.pubsub = MagicMock(return_value=mock_pubsub)
 
     with patch("api.routes.realtime.get_redis", return_value=mock_redis), \
          patch("api.routes.realtime.kis_pool") as mock_pool:
