@@ -262,3 +262,77 @@ async def test_trades_endpoint_returns_empty_without_system_key(client):
         response = await client.get("/stocks/005930/trades")
     assert response.status_code == 200
     assert response.json() == []
+
+
+# ─── Task 4: KIS WebSocket Pool ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pool_noop_when_no_system_key():
+    """system KIS 키가 없으면 subscribe가 no-op이다."""
+    with patch("services.websocket_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        from services.websocket_service import KISWebSocketPool
+        pool = KISWebSocketPool()
+        await pool.subscribe("005930")
+        assert pool.subscription_count("005930") == 0
+
+
+@pytest.mark.asyncio
+async def test_pool_subscription_count():
+    """subscribe/unsubscribe가 카운트를 올바르게 관리한다."""
+    with patch("services.websocket_service.settings") as mock_settings, \
+         patch("services.websocket_service.get_approval_key", return_value="appkey"):
+        mock_settings.SYSTEM_KIS_APP_KEY = "key"
+        mock_settings.SYSTEM_KIS_APP_SECRET = "secret"
+        mock_settings.SYSTEM_KIS_MODE = "paper"
+        from services.websocket_service import KISWebSocketPool
+        pool = KISWebSocketPool()
+        pool._get_session = AsyncMock(return_value=None)  # prevent real WS connection
+        pool._subscriptions["005930"] = 0
+
+        await pool.subscribe("005930")
+        assert pool.subscription_count("005930") == 1
+
+        await pool.subscribe("005930")
+        assert pool.subscription_count("005930") == 2
+
+        await pool.unsubscribe("005930")
+        assert pool.subscription_count("005930") == 1
+
+
+def test_parse_execution_message():
+    """H0STCNT0 메시지를 파싱해 체결 딕셔너리로 변환한다."""
+    from services.websocket_service import _parse_execution_msg
+    raw = "0|H0STCNT0|001|005930^093000^60100^2^100^0.17^0^0^0^0^0^0^1000"
+    result = _parse_execution_msg(raw)
+    assert result is not None
+    assert result["code"] == "005930"
+    assert result["price"] == 60100
+    assert result["volume"] == 1000
+    assert result["time"] == "093000"
+    assert result["type"] == "execution"
+
+
+def test_parse_execution_message_pingpong():
+    """PINGPONG 메시지는 None을 반환한다."""
+    from services.websocket_service import _parse_execution_msg
+    assert _parse_execution_msg("1|PINGPONG|...") is None
+
+
+@pytest.mark.asyncio
+async def test_pool_publishes_to_redis_on_message():
+    """메시지 수신 시 Redis stock:{code} 채널에 발행한다."""
+    import json as _json
+    mock_redis = AsyncMock()
+    raw = "0|H0STCNT0|001|005930^093000^60100^2^100^0.17^0^0^0^0^0^0^1000"
+
+    with patch("services.websocket_service.get_redis", return_value=mock_redis):
+        from services.websocket_service import KISWebSocketPool
+        pool = KISWebSocketPool()
+        await pool._on_raw_message(raw)
+
+    mock_redis.publish.assert_called_once()
+    channel, payload = mock_redis.publish.call_args[0]
+    assert channel == "stock:005930"
+    data = _json.loads(payload)
+    assert data["price"] == 60100
