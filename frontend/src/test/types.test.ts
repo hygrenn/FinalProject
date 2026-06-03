@@ -1,4 +1,4 @@
-import type { User, Candle, TabId, StockDetail, CandlePattern, MultiframeSignal } from '@/types'
+import type { User, Candle, TabId, StockDetail, CandlePattern, MultiframeSignal, OrderBookEntry, PortfolioMetrics } from '@/types'
 
 describe('types', () => {
   it('User type has required fields', () => {
@@ -43,5 +43,15 @@ describe('types', () => {
   it('MultiframeSignal has timeframe, signal, score', () => {
     const s: MultiframeSignal = { timeframe: '1D', signal: 'BUY', score: 78 }
     expect(s.signal).toBe('BUY')
+  })
+
+  it('OrderBookEntry has price and quantity', () => {
+    const entry: OrderBookEntry = { price: 73400, quantity: 500 }
+    expect(entry.price).toBe(73400)
+  })
+
+  it('PortfolioMetrics has total_value, return_pct, mdd', () => {
+    const m: PortfolioMetrics = { total_value: 5000000, total_return_pct: 12.5, mdd: -8.3 }
+    expect(m.total_return_pct).toBe(12.5)
   })
 })

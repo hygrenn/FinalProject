@@ -127,3 +127,20 @@ export interface MultiframeSignal {
   signal: 'BUY' | 'HOLD' | 'SELL'
   score: number
 }
+
+export interface OrderBookEntry {
+  price: number
+  quantity: number
+}
+
+export interface PortfolioMetrics {
+  total_value: number
+  total_return_pct: number
+  mdd: number
+}
+
+export interface RiskSettings {
+  max_position_pct: number
+  stop_loss_pct: number
+  daily_loss_limit: number
+}
