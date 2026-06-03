@@ -1,5 +1,8 @@
+import { useState } from 'react'
 import type { Stock, StockDetail } from '@/types'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { OrderModal } from '@/components/Trade/OrderModal'
 
 interface StockInfoBarProps {
   stock: Stock
@@ -13,6 +16,8 @@ export function StockInfoBar({ stock, detail, isLive, realtimePrice, realtimeCha
   const price = realtimePrice ?? stock.price ?? 0
   const changePct = realtimeChangePct ?? stock.change_pct ?? 0
   const isPositive = changePct >= 0
+
+  const [orderType, setOrderType] = useState<'BUY' | 'SELL' | null>(null)
 
   return (
     <div className="bg-card border-b border-border px-4 py-2 shrink-0">
@@ -51,6 +56,32 @@ export function StockInfoBar({ stock, detail, isLive, realtimePrice, realtimeCha
           </div>
         ))}
       </div>
+
+      {/* 매수/매도 버튼 */}
+      <div className="flex gap-2 mt-2">
+        <Button
+          size="sm"
+          className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+          onClick={() => setOrderType('BUY')}
+        >
+          매수
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+          onClick={() => setOrderType('SELL')}
+        >
+          매도
+        </Button>
+      </div>
+      {orderType && (
+        <OrderModal
+          open={true}
+          onClose={() => setOrderType(null)}
+          stock={stock}
+          orderType={orderType}
+        />
+      )}
     </div>
   )
 }

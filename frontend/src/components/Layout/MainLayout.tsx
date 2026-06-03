@@ -8,10 +8,14 @@ import { useUIStore } from '@/store/uiStore'
 import { useState } from 'react'
 import { LoginModal } from '@/components/auth/LoginModal'
 import { RegisterModal } from '@/components/auth/RegisterModal'
+import { OrderBook } from '@/components/Trade/OrderBook'
+import { MOCK_ORDER_BOOK } from '@/lib/mockData'
+import { useStockStore } from '@/store/stockStore'
 
 export function MainLayout() {
   const { sidebarOpen } = useUIStore()
   const [modal, setModal] = useState<'login' | 'register' | null>(null)
+  const { selectedStock, realtimePrice } = useStockStore()
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -25,8 +29,14 @@ export function MainLayout() {
           </div>
         )}
         <MainPanel />
-        {/* 우측 패널 — Phase 4에서 호가창 + 주문창 구현 */}
-        <div className="hidden lg:block w-56 shrink-0 bg-card border-l border-border" />
+        {/* 우측 패널 — 호가창 */}
+        <div className="hidden lg:flex lg:flex-col w-56 shrink-0 bg-card border-l border-border overflow-hidden">
+          <OrderBook
+            asks={MOCK_ORDER_BOOK.asks}
+            bids={MOCK_ORDER_BOOK.bids}
+            currentPrice={realtimePrice?.price ?? selectedStock?.price ?? 73400}
+          />
+        </div>
       </div>
 
       <div className="hidden md:block">
