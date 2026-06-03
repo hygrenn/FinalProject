@@ -10,7 +10,7 @@
 | Phase | 주제 | 담당 | 상태 |
 |---|---|---|---|
 | Phase 1 | 인증 + 기본 시세 API + 인프라 | hygrenn | ✅ 완료 |
-| Phase 2 | 실시간 시세 + WebSocket + 차트 고도화 | hygrenn | 🔲 미시작 |
+| Phase 2 | 실시간 시세 + WebSocket + 차트 고도화 | hygrenn | ✅ 완료 |
 | Phase 3 | AI 예측 + 시그널 + 패턴 인식 | hygrenn | 🔲 미시작 |
 | Phase 4 | 거래 + 포트폴리오 + 시뮬레이터 + 리스크 | hygrenn | 🔲 미시작 |
 | 프론트 전체 | 레이아웃 → 차트 → AI UI → 거래 UI | seogu-Jeong | 🔲 진행 중 |
@@ -110,28 +110,23 @@
 
 ---
 
-## Phase 2 — 실시간 시세 + WebSocket 🔲
+## Phase 2 — 실시간 시세 + WebSocket ✅
 
 **목표:** KIS WebSocket 연동으로 실시간 체결/호가 데이터 스트리밍
 
-### 구현 예정 항목
+**완료일:** 2026-06-03 | **테스트:** 52 passed
 
-| 컴포넌트 | 설명 |
-|---|---|
-| `services/websocket_service.py` | KIS WebSocket Pool (41종목 제한 처리, Redis Pub/Sub 브로커) |
-| `GET /stocks/{code}/orderbook` | 10단 호가 (실시간 or REST 폴백) |
-| `GET /stocks/{code}/trades` | 실시간 체결 최근 20건 |
-| `GET /ws/stocks/{code}` | SSE or WebSocket 스트리밍 엔드포인트 |
-| KIS WebSocket OAuth (approval_key 발급, 24h 세션 갱신) | `services/websocket_service.py` |
-| pykrx 분봉 데이터 지원 (`interval: 1min/5min/15min/1h`) | `services/market_service.py` 확장 |
+### 구현 완료 항목
 
-### 관련 KIS TR ID
-
-| 기능 | TR ID |
-|---|---|
-| WebSocket 현재가 (실시간 체결) | `H0STCNT0` |
-| WebSocket 호가 | `H0STASP0` |
-| REST 현재가 | `FHKST01010100` |
+| 컴포넌트 | 파일 | 상태 |
+|---|---|---|
+| KIS OAuth 토큰 캐시 (access_token + approval_key) | `backend/services/kis_token_service.py` | ✅ |
+| KIS REST 호가·체결·분봉 | `backend/services/kis_market_service.py` | ✅ |
+| KIS WebSocket Pool (41종목 배치, Redis Pub/Sub) | `backend/services/websocket_service.py` | ✅ |
+| SSE 스트리밍 `/ws/stocks/{code}` | `backend/api/routes/realtime.py` | ✅ |
+| `GET /stocks/{code}/orderbook` | `backend/api/routes/stocks.py` | ✅ |
+| `GET /stocks/{code}/trades` | `backend/api/routes/stocks.py` | ✅ |
+| 분봉 차트 (1min/5min/15min/1h) + period 1d | `backend/api/routes/stocks.py` | ✅ |
 
 ---
 
