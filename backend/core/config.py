@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    SYSTEM_KIS_APP_KEY: str = ""
+    SYSTEM_KIS_APP_SECRET: str = ""
+    SYSTEM_KIS_MODE: str = "paper"
     EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES: int = 30
 
     @field_validator("ENCRYPTION_KEY")

@@ -95,3 +95,77 @@ async def test_get_access_token_raises_502_on_kis_error():
         with pytest.raises(HTTPException) as exc_info:
             await get_access_token("key", "secret", "paper")
     assert exc_info.value.status_code == 502
+
+
+# ─── Task 2: KIS REST Market Service ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_orderbook_returns_empty_when_no_system_key():
+    """SYSTEM_KIS_APP_KEY가 없으면 빈 호가를 반환한다."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        from services.kis_market_service import get_orderbook
+        result = await get_orderbook("005930")
+    assert result == {"code": "005930", "asks": [], "bids": []}
+
+
+@pytest.mark.asyncio
+async def test_get_orderbook_parses_kis_response():
+    """KIS 응답을 10단 호가 형태로 파싱한다."""
+    fake_output1 = {
+        "askp1": "60100", "askp_rsqn1": "500",
+        "askp2": "60200", "askp_rsqn2": "300",
+        **{f"askp{i}": str(60100 + (i-1)*100) for i in range(3, 11)},
+        **{f"askp_rsqn{i}": "100" for i in range(3, 11)},
+        "bidp1": "60000", "bidp_rsqn1": "1000",
+        "bidp2": "59900", "bidp_rsqn2": "800",
+        **{f"bidp{i}": str(60000 - (i-1)*100) for i in range(3, 11)},
+        **{f"bidp_rsqn{i}": "200" for i in range(3, 11)},
+    }
+    fake_resp = MagicMock()
+    fake_resp.status_code = 200
+    fake_resp.json.return_value = {"output1": fake_output1}
+
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+
+    with patch("services.kis_market_service.settings") as mock_settings, \
+         patch("services.kis_market_service.get_access_token", return_value="tok"), \
+         patch("services.kis_market_service.get_redis", return_value=mock_redis), \
+         patch("httpx.AsyncClient") as mock_cls:
+        mock_settings.SYSTEM_KIS_APP_KEY = "testkey"
+        mock_settings.SYSTEM_KIS_APP_SECRET = "testsecret"
+        mock_settings.SYSTEM_KIS_MODE = "paper"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=fake_resp)
+        mock_cls.return_value = mock_client
+
+        from services.kis_market_service import get_orderbook
+        result = await get_orderbook("005930")
+
+    assert len(result["asks"]) == 10
+    assert len(result["bids"]) == 10
+    assert result["asks"][0] == {"price": 60100, "qty": 500}
+    assert result["bids"][0] == {"price": 60000, "qty": 1000}
+
+
+@pytest.mark.asyncio
+async def test_get_intraday_ohlcv_returns_empty_when_no_system_key():
+    """SYSTEM_KIS_APP_KEY가 없으면 빈 분봉 데이터를 반환한다."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        from services.kis_market_service import get_intraday_ohlcv
+        result = await get_intraday_ohlcv("005930", "1min")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_recent_trades_returns_empty_when_no_system_key():
+    """SYSTEM_KIS_APP_KEY가 없으면 빈 체결 목록을 반환한다."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        from services.kis_market_service import get_recent_trades
+        result = await get_recent_trades("005930")
+    assert result == []
