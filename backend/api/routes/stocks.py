@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import market_service
+from services import kis_market_service, market_service
 
 router = APIRouter()
+
+_INTRADAY_INTERVALS = {"1min", "5min", "15min", "1h"}
 
 
 @router.get("")
@@ -34,11 +36,26 @@ async def get_indices(request: Request):
 async def get_stock_chart(
     request: Request,
     code: str,
-    period: str = Query("1m", pattern="^(1w|1m|3m|6m|1y|3y)$"),
-    interval: str = Query("day", pattern="^(day|week|month)$"),
+    period: str = Query("1m", pattern="^(1d|1w|1m|3m|1y)$"),
+    interval: str = Query("day", pattern="^(1min|5min|15min|1h|day|week|month)$"),
 ):
-    data = await market_service.get_ohlcv_cached(code, period, interval)
+    if interval in _INTRADAY_INTERVALS:
+        data = await kis_market_service.get_intraday_ohlcv(code, interval)
+    else:
+        data = await market_service.get_ohlcv_cached(code, period, interval)
     return {"code": code, "period": period, "interval": interval, "data": data}
+
+
+@router.get("/{code}/orderbook")
+@limiter.limit("100/minute")
+async def get_orderbook(request: Request, code: str):
+    return await kis_market_service.get_orderbook(code)
+
+
+@router.get("/{code}/trades")
+@limiter.limit("100/minute")
+async def get_recent_trades(request: Request, code: str):
+    return await kis_market_service.get_recent_trades(code)
 
 
 @router.get("/{code}")

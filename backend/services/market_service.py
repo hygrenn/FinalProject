@@ -29,7 +29,7 @@ def _last_trading_day() -> str:
 
 
 async def get_ohlcv_from_pykrx(code: str, period: str, interval: str) -> list[dict]:
-    period_days = {"1w": 7, "1m": 30, "3m": 90, "6m": 180, "1y": 365, "3y": 1095}
+    period_days = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "1y": 365}
     freq_map = {"day": "d", "week": "w", "month": "m"}
 
     end = datetime.now(_KST)

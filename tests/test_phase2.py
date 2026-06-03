@@ -209,3 +209,56 @@ async def test_get_intraday_ohlcv_rejects_invalid_interval():
         with pytest.raises(HTTPException) as exc_info:
             await get_intraday_ohlcv("005930", "30min")
     assert exc_info.value.status_code == 400
+
+
+# ─── Task 3: Chart + Orderbook/Trades Routes ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_chart_intraday_returns_empty_without_system_key(client):
+    """분봉 요청 시 system KIS 키가 없으면 빈 data를 반환한다 (200)."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        response = await client.get("/stocks/005930/chart?period=1d&interval=1min")
+    assert response.status_code == 200
+    assert response.json()["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_chart_1d_period_accepted(client):
+    """period=1d가 유효한 값으로 받아들여진다."""
+    mock_redis = AsyncMock()
+    mock_redis.get.return_value = None
+    mock_redis.setex = AsyncMock()
+    with patch("services.market_service.get_ohlcv_from_pykrx", return_value=[]), \
+         patch("services.market_service.get_redis", return_value=mock_redis):
+        response = await client.get("/stocks/005930/chart?period=1d&interval=day")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_chart_invalid_interval_rejected(client):
+    """지원하지 않는 interval은 422를 반환한다."""
+    response = await client.get("/stocks/005930/chart?interval=2min")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_orderbook_endpoint_returns_empty_without_system_key(client):
+    """GET /stocks/{code}/orderbook: system 키 없으면 빈 asks/bids 반환."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        response = await client.get("/stocks/005930/orderbook")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["asks"] == []
+    assert data["bids"] == []
+
+
+@pytest.mark.asyncio
+async def test_trades_endpoint_returns_empty_without_system_key(client):
+    """GET /stocks/{code}/trades: system 키 없으면 빈 목록 반환."""
+    with patch("services.kis_market_service.settings") as mock_settings:
+        mock_settings.SYSTEM_KIS_APP_KEY = ""
+        response = await client.get("/stocks/005930/trades")
+    assert response.status_code == 200
+    assert response.json() == []
