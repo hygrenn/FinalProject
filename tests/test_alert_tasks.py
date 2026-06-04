@@ -127,9 +127,9 @@ async def test_daily_loss_blocks_trading():
 
     user_id = uuid.uuid4()
 
-    # Mock trade result (user_id, mode)
+    # Mock trade result (user_id, mode) — real 모드에서만 trading_blocked 설정됨
     trade_result = MagicMock()
-    trade_result.all.return_value = [(user_id, "paper")]
+    trade_result.all.return_value = [(user_id, "real")]
 
     # Mock alert settings (daily_loss_limit=True)
     alert_result = MagicMock()

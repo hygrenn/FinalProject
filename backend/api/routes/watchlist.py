@@ -5,6 +5,7 @@ import uuid as _uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db
@@ -218,7 +219,11 @@ async def add_item(
         sort_order=body.sort_order,
     )
     db.add(item)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="이미 관심종목에 추가된 종목입니다.")
     await db.refresh(item)
     return _serialize_item(item)
 
@@ -244,13 +249,13 @@ async def update_item(
     item = res.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="관심종목을 찾을 수 없습니다.")
-    if body.target_price_high is not None:
+    if "target_price_high" in body.model_fields_set:
         item.target_price_high = body.target_price_high
-    if body.target_price_low is not None:
+    if "target_price_low" in body.model_fields_set:
         item.target_price_low = body.target_price_low
     if body.sort_order is not None:
         item.sort_order = body.sort_order
-    if body.group_id is not None:
+    if "group_id" in body.model_fields_set and body.group_id is not None:
         try:
             new_gid = _uuid.UUID(body.group_id)
         except ValueError:

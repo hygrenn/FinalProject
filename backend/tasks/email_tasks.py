@@ -1,23 +1,22 @@
 import asyncio
+import logging
 
 from tasks import celery_app
 
-# Module-level imports for patchability in tests
-try:
-    from core.database import AsyncSessionLocal
-    from core.redis_client import get_redis
-    from models.risk import AlertSettings
-    from models.watchlist import WatchlistItem
-    from models.trade import Trade
-    from services.market_service import get_stock_current_price
-    from services.risk_service import (
-        _get_portfolio_total,
-        _get_today_loss,
-        get_or_create_settings,
-    )
-    from sqlalchemy import select
-except ImportError:
-    pass
+from core.database import AsyncSessionLocal
+from core.redis_client import get_redis
+from models.risk import AlertSettings
+from models.trade import Trade
+from models.watchlist import WatchlistItem
+from services.market_service import get_stock_current_price
+from services.risk_service import (
+    _get_portfolio_total,
+    _get_today_loss,
+    get_or_create_settings,
+)
+from sqlalchemy import select
+
+_logger = logging.getLogger(__name__)
 
 
 def _get_notification_email(user_id: str) -> str | None:
@@ -142,8 +141,8 @@ async def _check_price_alerts_async() -> None:
             try:
                 data = await get_stock_current_price(code)
                 price_map[code] = data.get("close", 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                _logger.warning("가격 조회 실패 (code=%s): %s", code, exc)
 
         redis = await get_redis()
 
@@ -191,12 +190,14 @@ def check_daily_loss() -> None:
 
 
 async def _check_daily_loss_async() -> None:
-    from datetime import date, datetime, timezone
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    _KST = ZoneInfo("Asia/Seoul")
 
     async with AsyncSessionLocal() as db:
-        today_start = datetime.combine(
-            date.today(), datetime.min.time()
-        ).replace(tzinfo=timezone.utc)
+        kst_now = datetime.now(_KST)
+        today_start = kst_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
 
         res = await db.execute(
             select(Trade.user_id, Trade.mode)
@@ -220,7 +221,7 @@ async def _check_daily_loss_async() -> None:
             if settings.trading_blocked:
                 continue
 
-            redis_key = f"daily_loss_alert:{uid_str}"
+            redis_key = f"daily_loss_alert:{uid_str}:{mode}"
             if await redis.exists(redis_key):
                 continue
 
@@ -240,11 +241,12 @@ async def _check_daily_loss_async() -> None:
             limit_pct = float(settings.daily_loss_limit_pct)
 
             if loss_pct > limit_pct:
-                settings.trading_blocked = True
-                settings.blocked_at = datetime.now(timezone.utc)
-                await db.commit()
+                if mode == "real":
+                    settings.trading_blocked = True
+                    settings.blocked_at = datetime.now(timezone.utc)
+                    await db.commit()
                 await redis.setex(redis_key, 86400, "1")
-                reason = f"일일 손실 {loss_pct:.1f}% > 한도 {limit_pct:.1f}%"
+                reason = f"일일 손실 {loss_pct:.1f}% > 한도 {limit_pct:.1f}% (mode={mode})"
                 send_risk_alert.delay(uid_str, reason)
 
 
