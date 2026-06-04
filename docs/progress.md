@@ -12,7 +12,7 @@
 | Phase 1 | 인증 + 기본 시세 API + 인프라 | hygrenn | ✅ 완료 |
 | Phase 2 | 실시간 시세 + WebSocket + 차트 고도화 | hygrenn | ✅ 완료 |
 | Phase 3 | AI 예측 + 시그널 + 패턴 인식 | hygrenn | ✅ 완료 |
-| Phase 4 | 거래 + 포트폴리오 + 시뮬레이터 + 리스크 | hygrenn | 🔲 미시작 |
+| Phase 4 | 거래 + 포트폴리오 + 시뮬레이터 + 리스크 | hygrenn | 🔄 진행 중 (4-A 완료) |
 | 프론트 전체 | 레이아웃 → 차트 → AI UI → 거래 UI | seogu-Jeong | 🔲 진행 중 |
 
 ---
@@ -169,45 +169,33 @@
 
 ---
 
-## Phase 4 — 거래 + 포트폴리오 + 시뮬레이터 + 리스크 🔲
+## Phase 4 — 거래 + 포트폴리오 + 시뮬레이터 + 리스크
 
-**목표:** KIS REST API 실거래/모의투자 주문, 포트폴리오 추적, 백테스팅, 리스크 관리
+### Phase 4-A — 거래 + 포트폴리오 + 리스크 ✅
 
-### 구현 예정 항목
+**완료일:** 2026-06-04 | **테스트:** 81 passed
 
-| 컴포넌트 | 파일 | 설명 |
+### 구현 완료 항목
+
+| 컴포넌트 | 파일 | 상태 |
 |---|---|---|
-| KIS 서비스 (완전판) | `backend/services/kis_service.py` | 매수(TTTC0802U)/매도(TTTC0801U)/잔고/체결 등 TR ID 매핑, httpx async |
-| 리스크 서비스 | `backend/services/risk_service.py` | 종목별 한도, 일일 손실 한도 체크 |
-| 백테스팅 엔진 | `backend/services/backtest_service.py` | MDD/샤프비율/승률 계산 |
-| 포트폴리오 모델 | `backend/models/portfolio.py` | `portfolios`, `trades`, `risk_settings`, `watchlists`, `alert_settings`, `backtest_results`, `ai_signals_history` 테이블 |
-| Celery 태스크 | `backend/tasks/email_tasks.py`, `report_tasks.py` | 이메일 발송, 주간 리포트 (APScheduler) |
-| APScheduler | `backend/main.py` | 가격 알림 5분, 손실 체크 10분, AI 갱신 15:35, 주간 리포트 월 08:00 |
+| KIS 서비스 (완전판) | `backend/services/kis_service.py` | ✅ |
+| 리스크 서비스 | `backend/services/risk_service.py` | ✅ |
+| 체결 폴링 태스크 | `backend/tasks/order_tasks.py` | ✅ |
+| 이메일 태스크 | `backend/tasks/email_tasks.py` | ✅ |
+| 거래 API | `backend/api/routes/trades.py` | ✅ |
+| 포트폴리오 API | `backend/api/routes/portfolio.py` | ✅ |
+| 리스크 설정 API | `backend/api/routes/risk.py` | ✅ |
+| 알림 설정 API | `backend/api/routes/alerts.py` | ✅ |
+| 모드 전환 | `PUT /auth/mode` | ✅ |
+| APScheduler 추가 스케줄 | `backend/main.py` | ✅ |
+| DB 마이그레이션 v8 | enforce_hard_stop, notification_email | ✅ |
 
-### 거래/포트폴리오 API
+### Phase 4-B — 백테스팅 🔲
 
-| 엔드포인트 | 설명 |
-|---|---|
-| `POST /trades/order` | 리스크 체크 → KIS API 주문 → 체결 폴링 |
-| `GET /trades` | 주문 목록 (status, date 필터) |
-| `DELETE /trades/{id}` | 미체결 주문 취소 |
-| `GET /portfolio` | 보유 종목 현황 + 수익률 |
-| `GET /portfolio/performance` | 일별 평가액 히스토리 |
-| `GET /portfolio/metrics` | MDD, 샤프비율, 승률 |
-| `GET /portfolio/export` | CSV 다운로드 |
-| `POST /backtest/run` | 백테스트 실행 (Celery 비동기) |
-| `GET /backtest/{id}` | 백테스트 결과 조회 |
-| `GET/PUT /risk/settings` | 리스크 설정 조회/수정 |
-| `GET/PUT /alerts/settings` | 알림 설정 조회/수정 |
+### Phase 4-C — 투자 시뮬레이터 🔲
 
-### 투자 시뮬레이터 API (`/simulate`)
-
-| 엔드포인트 | 설명 |
-|---|---|
-| `POST /simulate/lumpsum` | 일시불 투자 수익률 계산 |
-| `POST /simulate/recurring` | 적립식 투자 수익률 계산 |
-| `GET /simulate/data-status` | 캐시 데이터 존재 여부 |
-| `GET /simulate/download` | 전체 데이터 다운로드 (SSE 스트리밍) |
+### Phase 4-D — 관심종목 + 알림 🔲
 
 ---
 
