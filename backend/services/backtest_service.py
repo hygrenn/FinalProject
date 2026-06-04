@@ -10,7 +10,7 @@ import pandas as pd
 from pykrx import stock as pykrx_stock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ml.features import build_features, FEATURE_COLS
+from ml.features import build_features
 from models.backtest import BacktestResult
 from services.ai_service import _calc_tech_score
 
