@@ -36,7 +36,7 @@ def detect_patterns(df: pd.DataFrame) -> list[dict]:
             series = ta.cdl_pattern(df["open"], df["high"], df["low"], df["close"], name=pattern)
             if series is None or series.empty:
                 continue
-            last_val = int(series.iloc[-1])
+            last_val = int(series.iloc[-1].item())
             if last_val == 0:
                 continue
             direction = _FIXED_DIRECTION.get(pattern)

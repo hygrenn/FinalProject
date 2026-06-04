@@ -83,3 +83,27 @@ cd frontend && npm install && npm run dev
 ```
 
 `.env.example` 복사해서 `.env` 만들기. `.env`는 절대 커밋 금지.
+
+## KIS API 사용 reference codes (참고용)
+" reference/ "  폴더에 레퍼런스 코드가 있음. 정확한 정보 필요시 작업 전 관련 파일을 직접 읽어볼 것
+reference/access_token_issuance.py     # 접근코드 발급
+reference/kis_auth.py                  #
+reference/kis_domstk.py                # import할 샘플파일 제공
+reference/kis_domstk_current.py        # 주식현재가 시세
+reference/kis_domstk_buy.py            # 국내주식 기본시세 > 주식현재가 체결 시세 가져오기
+reference/kis_domstk_day.py            # 일자별 시세
+reference/kis_domstk_hoga.py           # 호가/예상체결 정보 가져오기
+reference/kis_domstk_sise.py           # 국내주식기간별시세(일/주/월/년)
+reference/kis_domstk_dangil.py         # 당일시간대별체결 정보
+reference/kis_domstk_cash.py           # 주식주문 api 이용, 원하는 종목 매수/매도
+reference/kis_domstk_cancel.py         # 주식주문 정정취소
+reference/kis_domstk_johwe.py          # 주식정정취소가능주문내역조회
+reference/kis_domstk_cur.py            # 주식일별주문체결현황조회
+reference/kis_api.py                   # api 호출 샘플
+reference/kis_api_test.py              # api 호출 실행
+reference/kis_dev.yaml                 
+reference/kis_api_responce.py          # api 응답 처리
+reference/kis_api_call.py              # api 호출
+reference/token_issue.py               # 토큰 발급
+reference/token_reissue.py             # 토큰 재발급
+reference/hash_generate.py             # 해쉬키 생성

@@ -42,8 +42,12 @@ def _fetch_ohlcv(code: str, years: int = 2):
     return df[["open", "high", "low", "close", "volume"]].astype(float)
 
 
-def _make_sequences(feat_df):
-    scaler = fit_scaler(feat_df)
+def _make_sequences(feat_df, n_train_rows: int):
+    """n_train_rows: scaler fit에 사용할 train 구간 행 수 (data leakage 방지)."""
+    from sklearn.preprocessing import MinMaxScaler
+
+    scaler = MinMaxScaler()
+    scaler.fit(feat_df[FEATURE_COLS].values[:n_train_rows])
     data = scaler.transform(feat_df[FEATURE_COLS].values)
     raw_close = feat_df["close"].values
 
@@ -68,7 +72,8 @@ def train_one(code: str) -> bool:
         print(f"[{code}] 데이터 부족 ({len(feat_df)} rows)")
         return False
 
-    X, y, scaler = _make_sequences(feat_df)
+    n_train_rows = int(len(feat_df) * 0.70)
+    X, y, scaler = _make_sequences(feat_df, n_train_rows)
     n = len(X)
     n_train = int(n * 0.70)
     n_val = int(n * 0.85)

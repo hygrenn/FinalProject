@@ -6,19 +6,15 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from sqlalchemy import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-try:
-    from sqlalchemy import insert
-    from sqlalchemy.ext.asyncio import AsyncSession
-    from core.redis_client import get_redis
-    from ml.features import FEATURE_COLS, build_features
-    from ml.pattern_matcher import find_similar_patterns
-    from ml.predict import WEIGHTS_DIR, get_lstm_direction, predict_scenarios
-    from models.ai_signal import AISignalHistory
-    from services.market_service import _is_market_open, get_ohlcv_cached
-except ImportError:
-    # Allow pure-function tests to import this module without full stack
-    pass
+from core.redis_client import get_redis
+from ml.features import FEATURE_COLS, build_features
+from ml.pattern_matcher import find_similar_patterns
+from ml.predict import WEIGHTS_DIR, get_lstm_direction, predict_scenarios
+from models.ai_signal import AISignalHistory
+from services.market_service import _is_market_open, get_ohlcv_cached
 
 _KST = ZoneInfo("Asia/Seoul")
 
@@ -59,13 +55,8 @@ def _score_to_signal(score: float) -> str:
     return "HOLD"
 
 
-async def get_indicators(code: str) -> dict:
-    """OHLCV 로드 후 기술적 지표 원시값 반환."""
-    raw = await get_ohlcv_cached(code, "3m", "day")
-    df = _ohlcv_to_df(raw)
-    if df.empty or len(df) < 60:
-        return {}
-    feat_df = build_features(df)
+def _extract_indicators(df: pd.DataFrame, feat_df: pd.DataFrame) -> dict:
+    """이미 계산된 DataFrame에서 지표 원시값 추출."""
     if feat_df.empty:
         return {}
     last = feat_df.iloc[-1]
@@ -81,6 +72,16 @@ async def get_indicators(code: str) -> dict:
     }
 
 
+async def get_indicators(code: str) -> dict:
+    """OHLCV 로드 후 기술적 지표 원시값 반환."""
+    raw = await get_ohlcv_cached(code, "3m", "day")
+    df = _ohlcv_to_df(raw)
+    if df.empty or len(df) < 60:
+        return {}
+    feat_df = build_features(df)
+    return _extract_indicators(df, feat_df)
+
+
 async def calculate_signal(code: str, db: AsyncSession | None = None) -> dict:
     """AI 시그널 계산. DB 세션 전달 시 ai_signals_history에 저장."""
     raw = await get_ohlcv_cached(code, "3m", "day")
@@ -88,7 +89,8 @@ async def calculate_signal(code: str, db: AsyncSession | None = None) -> dict:
     if df.empty or len(df) < 60:
         return {"code": code, "signal": "HOLD", "signal_score": 50.0, "lstm_available": False}
 
-    indicators = await get_indicators(code)
+    feat_df = build_features(df)
+    indicators = _extract_indicators(df, feat_df)
     tech_score = _calc_tech_score(indicators)
 
     lstm_direction = await asyncio.to_thread(get_lstm_direction, code, df)

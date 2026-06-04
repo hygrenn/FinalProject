@@ -10,12 +10,14 @@ def refresh_ai_signals() -> None:
 
 
 async def _refresh_async() -> None:
+    from core.database import AsyncSessionLocal
     from ml.predict import WEIGHTS_DIR
     from services.ai_service import calculate_signal
 
     codes = [p.stem for p in WEIGHTS_DIR.glob("*.pth")]
     for code in codes:
         try:
-            await calculate_signal(code)
+            async with AsyncSessionLocal() as db:
+                await calculate_signal(code, db)
         except Exception:
             pass
