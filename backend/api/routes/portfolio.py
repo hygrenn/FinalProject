@@ -109,8 +109,11 @@ async def get_performance(
             continue
         day = t.filled_at.strftime("%Y-%m-%d")
         pnl = 0
-        if t.order_type == "SELL" and t.order_price:
-            pnl = int((t.executed_price - t.order_price) * t.quantity)
+        if t.order_type == "SELL":
+            if t.realized_pnl is not None:
+                pnl = t.realized_pnl
+            elif t.order_price:
+                pnl = int((t.executed_price - t.order_price) * t.quantity)
         daily[day] = daily.get(day, 0) + pnl
 
     return [{"date": d, "pnl": v} for d, v in sorted(daily.items())]
@@ -137,7 +140,15 @@ async def get_metrics(
     returns = []
     wins = 0
     for t in sells:
-        if t.executed_price and t.order_price:
+        if t.realized_pnl is not None and t.executed_price:
+            # cost_basis = executed * qty - realized_pnl  (역산)
+            cost_basis = int(t.executed_price * t.quantity) - t.realized_pnl
+            if cost_basis > 0:
+                r = t.realized_pnl / cost_basis
+                returns.append(r)
+                if r > 0:
+                    wins += 1
+        elif t.executed_price and t.order_price:
             r = float((t.executed_price - t.order_price) / t.order_price)
             returns.append(r)
             if r > 0:

@@ -92,6 +92,8 @@ async def _update_portfolio(db, trade, executed_price: int) -> None:
             holding.quantity = total_qty
             holding.avg_price = round(new_avg, 2)
     elif trade.order_type == "SELL" and holding:
+        # 체결 전 평균매수가 기준 실현손익 계산
+        trade.realized_pnl = int((executed_price - float(holding.avg_price)) * trade.quantity)
         holding.quantity -= trade.quantity
         if holding.quantity <= 0:
             await db.delete(holding)

@@ -76,7 +76,11 @@ async def _get_today_loss(user_id, mode: str, db: AsyncSession) -> int:
     trades = result.scalars().all()
     total_loss = 0
     for t in trades:
-        if t.executed_price and t.order_price:
+        if t.realized_pnl is not None:
+            if t.realized_pnl < 0:
+                total_loss += abs(t.realized_pnl)
+        elif t.executed_price and t.order_price:
+            # 이전 기록 fallback (realized_pnl 컬럼 추가 전 데이터)
             pnl = int((t.executed_price - t.order_price) * t.quantity)
             if pnl < 0:
                 total_loss += abs(pnl)
