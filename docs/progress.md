@@ -213,7 +213,16 @@
 | 시뮬레이터 API | `backend/api/routes/simulate.py` | ✅ |
 | 테스트 | `tests/test_simulate.py` (8 passed) | ✅ |
 
-### Phase 4-D — 관심종목 + 알림 🔲
+### Phase 4-D — 관심종목 + 알림 ✅
+
+**완료일:** 2026-06-04
+
+| 컴포넌트 | 파일 | 상태 |
+|---|---|---|
+| 관심종목 CRUD API | `backend/api/routes/watchlist.py` | ✅ |
+| 목표가 알림 | `backend/tasks/email_tasks.py` (check_price_alerts) | ✅ |
+| 일일 손실 자동 차단 | `backend/tasks/email_tasks.py` (check_daily_loss) | ✅ |
+| 테스트 | `tests/test_watchlist.py` (6) + `tests/test_alert_tasks.py` (5) | ✅ |
 
 ---
 
