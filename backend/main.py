@@ -13,6 +13,7 @@ from api.routes import ai as ai_router
 from api.routes import alerts as alerts_router
 from api.routes import backtest as backtest_router
 from api.routes import simulate as simulate_router
+from api.routes import watchlist as watchlist_router
 from api.routes import auth as auth_router
 from api.routes import portfolio as portfolio_router
 from api.routes import realtime as realtime_router
@@ -67,6 +68,7 @@ app.include_router(risk_router.router, prefix="/risk", tags=["risk"])
 app.include_router(alerts_router.router, prefix="/alerts", tags=["alerts"])
 app.include_router(backtest_router.router, prefix="/backtest", tags=["backtest"])
 app.include_router(simulate_router.router, prefix="/simulate", tags=["simulate"])
+app.include_router(watchlist_router.router, prefix="/watchlist", tags=["watchlist"])
 
 
 @app.get("/health")
