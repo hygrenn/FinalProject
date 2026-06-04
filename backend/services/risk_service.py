@@ -55,13 +55,15 @@ async def _get_holding_value(user_id, stock_code: str, mode: str, db: AsyncSessi
 
 
 async def _get_today_loss(user_id, mode: str, db: AsyncSession) -> int:
-    """오늘 실현 손실 합산 (SELL 체결 기준)."""
-    from datetime import date, datetime, timezone
+    """오늘 실현 손실 합산 (SELL 체결 기준, KST 거래일 기준)."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
     from sqlalchemy import and_
 
     if isinstance(user_id, str):
         user_id = _uuid.UUID(user_id)
-    today_start = datetime.combine(date.today(), datetime.min.time()).replace(tzinfo=timezone.utc)
+    _KST = ZoneInfo("Asia/Seoul")
+    today_start = datetime.now(_KST).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     result = await db.execute(
         select(Trade).where(
             and_(

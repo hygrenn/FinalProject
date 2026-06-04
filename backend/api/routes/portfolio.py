@@ -46,8 +46,10 @@ async def get_portfolio(
                 "total_cost": total_cost,
                 "total_return_pct": round(total_return_pct, 2),
             }
-        except HTTPException:
-            pass  # KIS 키 미설정 → DB fallback
+        except HTTPException as exc:
+            if exc.status_code != 400:
+                raise  # 502(KIS 장애), 401(인증 오류) 등은 그대로 전파
+            # 400 = KIS 키 미설정 → DB fallback
 
     # paper 모드 또는 KIS 키 미설정 시 DB 기반 계산
     holdings = await _get_holdings(user.id, user.mode, db)
