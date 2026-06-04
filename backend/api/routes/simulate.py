@@ -37,6 +37,8 @@ class LumpsumRequest(BaseModel):
         buy = info.data.get("buy_date")
         if buy and v <= buy:
             raise ValueError("sell_date는 buy_date 이후여야 합니다.")
+        if v > date.today():
+            raise ValueError("sell_date는 오늘 이후일 수 없습니다.")
         return v
 
 
@@ -60,6 +62,8 @@ class RecurringRequest(BaseModel):
         start = info.data.get("start_date")
         if start and v <= start:
             raise ValueError("end_date는 start_date 이후여야 합니다.")
+        if v > date.today():
+            raise ValueError("end_date는 오늘 이후일 수 없습니다.")
         return v
 
 

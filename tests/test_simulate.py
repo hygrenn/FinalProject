@@ -89,7 +89,12 @@ def test_calc_recurring_logic():
     assert result["total_invested_krw"] == jan_invested + feb_invested + mar_invested
     # 최종가 69000
     assert result["current_value_krw"] == 12 * 69000
-    assert len(result["chart_data"]) == 3
+    # 3개 매수일 + 최종 평가 시점(2024-03-31) = 4
+    assert len(result["chart_data"]) == 4
+    assert result["chart_data"][-1]["date"] == "2024-03-31"
+    assert result["chart_data"][-1]["value"] == 12 * 69000
+    assert result["start_date_actual"] == "2024-01-02"
+    assert result["end_date_actual"] == "2024-03-31"
 
 # ──── 통합 테스트 ────────────────────────────────────────────
 

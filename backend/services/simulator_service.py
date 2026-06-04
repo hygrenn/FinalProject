@@ -92,6 +92,7 @@ SIMULATOR_TICKERS = [
     {"code": "008770", "name": "호텔신라"},
     {"code": "011200", "name": "HMM"},
     {"code": "010950", "name": "S-Oil"},
+    {"code": "011170", "name": "롯데케미칼"},
 ]
 
 
@@ -110,9 +111,11 @@ async def get_prices(
     market: str = "KR",
 ) -> dict[str, float]:
     """
-    price_cache 조회 후 누락 시 pykrx로 다운로드.
+    price_cache 조회 후 범위가 부족하면 pykrx로 보충.
     반환: {date_str: close_price} (영업일만 포함)
     """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     result = await db.execute(
         select(PriceCache)
         .where(
@@ -126,7 +129,17 @@ async def get_prices(
     rows = result.scalars().all()
     cached = {str(r.trade_date): float(r.close_price) for r in rows}
 
-    if not cached:
+    # 캐시 커버리지 확인: 5일 이상 범위 이탈 시 pykrx 재조회
+    needs_fetch = True
+    if cached:
+        cache_start = date.fromisoformat(min(cached.keys()))
+        cache_end = date.fromisoformat(max(cached.keys()))
+        needs_fetch = (
+            (cache_start - start).days > 5
+            or (end - cache_end).days > 5
+        )
+
+    if needs_fetch:
         try:
             df = await asyncio.to_thread(
                 pykrx_stock.get_market_ohlcv_by_date,
@@ -135,30 +148,40 @@ async def get_prices(
                 ticker,
             )
         except Exception as exc:
+            if cached:
+                return cached  # 부분 캐시라도 반환
             raise HTTPException(status_code=502, detail=f"시세 데이터 조회 실패: {exc}") from exc
 
-        if df is None or df.empty:
-            raise HTTPException(status_code=404, detail=f"{ticker} 해당 기간 데이터가 없습니다.")
+        if df is not None and not df.empty:
+            df = df.rename(columns={"종가": "close"})
+            rows_to_insert = [
+                {
+                    "ticker": ticker,
+                    "trade_date": idx.date() if hasattr(idx, "date") else idx,
+                    "close_price": float(row["close"]),
+                    "market": market,
+                }
+                for idx, row in df.iterrows()
+                if float(row["close"]) > 0
+            ]
+            if rows_to_insert:
+                stmt = pg_insert(PriceCache).values(rows_to_insert).on_conflict_do_nothing()
+                await db.execute(stmt)
+                await db.commit()
 
-        df = df.rename(columns={"종가": "close"})
-        new_rows = [
-            PriceCache(
-                ticker=ticker,
-                trade_date=idx.date() if hasattr(idx, "date") else idx,
-                close_price=float(row["close"]),
-                market=market,
+        # 재조회로 최신 캐시 반영
+        result2 = await db.execute(
+            select(PriceCache)
+            .where(
+                PriceCache.ticker == ticker,
+                PriceCache.market == market,
+                PriceCache.trade_date >= start,
+                PriceCache.trade_date <= end,
             )
-            for idx, row in df.iterrows()
-            if float(row["close"]) > 0
-        ]
-        db.add_all(new_rows)
-        await db.commit()
-
-        cached = {
-            str(idx.date() if hasattr(idx, "date") else idx): float(row["close"])
-            for idx, row in df.iterrows()
-            if float(row["close"]) > 0
-        }
+            .order_by(PriceCache.trade_date)
+        )
+        rows2 = result2.scalars().all()
+        cached = {str(r.trade_date): float(r.close_price) for r in rows2}
 
     if not cached:
         raise HTTPException(status_code=404, detail=f"{ticker} 해당 기간 데이터가 없습니다.")
@@ -244,6 +267,7 @@ def calc_lumpsum(
         "sell_price": round(sell_price),
         "buy_value_krw": round(buy_value),
         "sell_value_krw": round(sell_value),
+        "cash_left_krw": round(amount_krw - buy_value),
         "profit_krw": round(profit_krw),
         "return_pct": round(return_pct, 4),
         "buy_date_actual": buy_date_actual,
@@ -287,21 +311,32 @@ def calc_recurring(
     if total_shares == 0:
         raise HTTPException(status_code=422, detail="매수 가능한 주식이 없습니다.")
 
+    start_date_actual = trading_days[0]
     end_date_actual = _find_nearest(prices, end_date, "backward")
     final_price = prices[end_date_actual]
     current_value = total_shares * final_price
     avg_buy_price = total_invested / total_shares
     return_pct = (current_value - total_invested) / total_invested * 100
 
+    # 최종 평가 시점이 마지막 매수일과 다르면 종료 포인트 추가
+    if chart_data and chart_data[-1]["date"] != end_date_actual:
+        chart_data.append({
+            "date": end_date_actual,
+            "invested": round(total_invested),
+            "value": round(current_value),
+        })
+
     return {
         "ticker": ticker,
         "name": name,
+        "start_date_actual": start_date_actual,
+        "end_date_actual": end_date_actual,
         "total_invested_krw": round(total_invested),
         "total_shares": total_shares,
         "avg_buy_price": round(avg_buy_price),
         "current_value_krw": round(current_value),
         "return_pct": round(return_pct, 4),
-        "total_purchases": len(chart_data),
+        "total_purchases": len([c for c in chart_data if c["date"] != end_date_actual]),
         "chart_data": chart_data,
     }
 
@@ -355,10 +390,20 @@ async def download_tickers(db: AsyncSession) -> AsyncGenerator[dict, None]:
         five_years_ago = today.replace(year=today.year - 5, day=28)
 
     for i, t in enumerate(SIMULATOR_TICKERS):
-        await get_prices(t["code"], five_years_ago, today, db)
-        yield {
-            "current": i + 1,
-            "total": len(SIMULATOR_TICKERS),
-            "ticker": t["code"],
-            "name": t["name"],
-        }
+        try:
+            await get_prices(t["code"], five_years_ago, today, db)
+            yield {
+                "current": i + 1,
+                "total": len(SIMULATOR_TICKERS),
+                "ticker": t["code"],
+                "name": t["name"],
+            }
+        except Exception as exc:
+            yield {
+                "current": i + 1,
+                "total": len(SIMULATOR_TICKERS),
+                "ticker": t["code"],
+                "name": t["name"],
+                "status": "error",
+                "error": str(exc),
+            }
