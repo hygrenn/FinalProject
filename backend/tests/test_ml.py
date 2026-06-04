@@ -98,3 +98,34 @@ def test_get_lstm_direction_range(tmp_path, monkeypatch):
     direction = predict_module.get_lstm_direction("005930", df)
     assert direction is not None
     assert -1.0 <= direction <= 1.0
+
+
+from ml.pattern_matcher import find_similar_patterns
+
+
+def test_find_similar_returns_list():
+    df = _make_ohlcv(200)
+    result = find_similar_patterns(df)
+    assert isinstance(result, list)
+
+
+def test_find_similar_top_k():
+    df = _make_ohlcv(200)
+    result = find_similar_patterns(df, top_k=5)
+    assert len(result) <= 5
+
+
+def test_find_similar_structure():
+    df = _make_ohlcv(200)
+    result = find_similar_patterns(df, top_k=3)
+    for item in result:
+        assert "date" in item
+        assert "similarity" in item
+        assert "actual_return_5d" in item
+        assert -1.0 <= item["similarity"] <= 1.0
+
+
+def test_find_similar_short_df():
+    df = _make_ohlcv(10)
+    result = find_similar_patterns(df)
+    assert result == []
