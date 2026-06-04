@@ -3,7 +3,7 @@ import io
 import math
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from api.middleware.rate_limit import limiter
 from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
+from services import kis_service
 from services.market_service import get_stock_current_price
 
 router = APIRouter()
@@ -32,6 +33,23 @@ async def get_portfolio(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # real 모드: KIS API에서 정확한 잔고/평균단가 조회
+    if user.mode == "real":
+        try:
+            kis_data = await kis_service.get_balance_full(user)
+            total_eval = kis_data["total_eval"]
+            total_cost = kis_data["total_cost"]
+            total_return_pct = ((total_eval - total_cost) / total_cost * 100) if total_cost > 0 else 0
+            return {
+                "holdings": kis_data["holdings"],
+                "total_eval": total_eval,
+                "total_cost": total_cost,
+                "total_return_pct": round(total_return_pct, 2),
+            }
+        except HTTPException:
+            pass  # KIS 키 미설정 → DB fallback
+
+    # paper 모드 또는 KIS 키 미설정 시 DB 기반 계산
     holdings = await _get_holdings(user.id, user.mode, db)
     result = []
     total_eval = 0

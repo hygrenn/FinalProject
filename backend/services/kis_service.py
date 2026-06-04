@@ -253,6 +253,78 @@ async def get_balance(user) -> dict:
     }
 
 
+async def get_balance_full(user) -> dict:
+    """보유종목 리스트 + 예수금 전체 조회 (실거래 모드 포트폴리오용)."""
+    _, _, account_no = _get_keys(user)
+    headers = await _headers(user)
+    headers["tr_id"] = _tr_id("balance", user.mode)
+
+    params = {
+        "CANO": account_no[:8],
+        "ACNT_PRDT_CD": account_no[8:] if len(account_no) > 8 else "01",
+        "AFHR_FLPR_YN": "N",
+        "OFL_YN": "",
+        "INQR_DVSN": "00",
+        "UNPR_DVSN": "01",
+        "FUND_STTL_ICLD_YN": "N",
+        "FNCG_AMT_AUTO_RDPT_YN": "N",
+        "PRCS_DVSN": "01",
+        "CTX_AREA_FK100": "",
+        "CTX_AREA_NK100": "",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{_base_url(user.mode)}/uapi/domestic-stock/v1/trading/inquire-balance",
+                params=params,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"잔고 조회 실패: {exc}") from exc
+
+    def _int(v: str) -> int:
+        try:
+            return int(float(v or 0))
+        except (ValueError, TypeError):
+            return 0
+
+    def _float(v: str) -> float:
+        try:
+            return float(v or 0)
+        except (ValueError, TypeError):
+            return 0.0
+
+    output1 = data.get("output1", [])
+    output2 = data.get("output2", [{}])[0]
+
+    holdings = [
+        {
+            "stock_code": item.get("pdno", ""),
+            "stock_name": item.get("prdt_name", ""),
+            "quantity": _int(item.get("hldg_qty", "0")),
+            "avg_price": _float(item.get("pchs_avg_pric", "0")),
+            "current_price": _int(item.get("prpr", "0")),
+            "eval_amount": _int(item.get("evlu_amt", "0")),
+            "profit_loss": _int(item.get("evlu_pfls_amt", "0")),
+            "return_pct": round(_float(item.get("evlu_pfls_rt", "0")), 2),
+        }
+        for item in output1
+        if _int(item.get("hldg_qty", "0")) > 0
+    ]
+
+    total_cost = sum(_int(item.get("pchs_amt", "0")) for item in output1 if _int(item.get("hldg_qty", "0")) > 0)
+
+    return {
+        "holdings": holdings,
+        "total_eval": _int(output2.get("tot_evlu_amt", "0")),
+        "total_cost": total_cost,
+        "cash": _int(output2.get("dnca_tot_amt", "0")),
+    }
+
+
 async def test_kis_connection(app_key: str, app_secret: str, mode: str) -> bool:
     """KIS 연결 테스트 (기존 함수 유지)."""
     base_url = _PAPER_URL if mode == "paper" else _REAL_URL
