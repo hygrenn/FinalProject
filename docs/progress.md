@@ -191,7 +191,15 @@
 | APScheduler 추가 스케줄 | `backend/main.py` | ✅ |
 | DB 마이그레이션 v8 | enforce_hard_stop, notification_email | ✅ |
 
-### Phase 4-B — 백테스팅 🔲
+### Phase 4-B — 백테스팅 ✅
+
+**완료일:** 2026-06-04
+
+| 컴포넌트 | 파일 | 상태 |
+|---|---|---|
+| 백테스팅 엔진 | `backend/services/backtest_service.py` | ✅ |
+| 백테스팅 API | `backend/api/routes/backtest.py` | ✅ |
+| 테스트 | `tests/test_backtest.py` (3 passed) | ✅ |
 
 ### Phase 4-C — 투자 시뮬레이터 🔲
 

@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.middleware.rate_limit import limiter
 from api.routes import ai as ai_router
 from api.routes import alerts as alerts_router
+from api.routes import backtest as backtest_router
 from api.routes import auth as auth_router
 from api.routes import portfolio as portfolio_router
 from api.routes import realtime as realtime_router
@@ -63,6 +64,7 @@ app.include_router(trades_router.router, prefix="/trades", tags=["trades"])
 app.include_router(portfolio_router.router, prefix="/portfolio", tags=["portfolio"])
 app.include_router(risk_router.router, prefix="/risk", tags=["risk"])
 app.include_router(alerts_router.router, prefix="/alerts", tags=["alerts"])
+app.include_router(backtest_router.router, prefix="/backtest", tags=["backtest"])
 
 
 @app.get("/health")
