@@ -201,7 +201,17 @@
 | 백테스팅 API | `backend/api/routes/backtest.py` | ✅ |
 | 테스트 | `tests/test_backtest.py` (3 passed) | ✅ |
 
-### Phase 4-C — 투자 시뮬레이터 🔲
+### Phase 4-C — 투자 시뮬레이터 ✅
+
+**완료일:** 2026-06-04
+
+| 컴포넌트 | 파일 | 상태 |
+|---|---|---|
+| price_cache 마이그레이션 | `db/migrations/versions/a7b8c9d0e1f2_add_price_cache.py` | ✅ |
+| PriceCache 모델 | `backend/models/price_cache.py` | ✅ |
+| 시뮬레이터 엔진 | `backend/services/simulator_service.py` | ✅ |
+| 시뮬레이터 API | `backend/api/routes/simulate.py` | ✅ |
+| 테스트 | `tests/test_simulate.py` (8 passed) | ✅ |
 
 ### Phase 4-D — 관심종목 + 알림 🔲
 
