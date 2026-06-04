@@ -1,6 +1,6 @@
 # StockSenseAI — Phase별 진행 현황
 
-**최종 업데이트:** 2026-06-02
+**최종 업데이트:** 2026-06-04
 **레포:** https://github.com/hygrenn/FinalProject | **브랜치:** `hwang` (백엔드), `seogu-Jeong` (프론트)
 
 ---
@@ -11,7 +11,7 @@
 |---|---|---|---|
 | Phase 1 | 인증 + 기본 시세 API + 인프라 | hygrenn | ✅ 완료 |
 | Phase 2 | 실시간 시세 + WebSocket + 차트 고도화 | hygrenn | ✅ 완료 |
-| Phase 3 | AI 예측 + 시그널 + 패턴 인식 | hygrenn | 🔲 미시작 |
+| Phase 3 | AI 예측 + 시그널 + 패턴 인식 | hygrenn | ✅ 완료 |
 | Phase 4 | 거래 + 포트폴리오 + 시뮬레이터 + 리스크 | hygrenn | 🔲 미시작 |
 | 프론트 전체 | 레이아웃 → 차트 → AI UI → 거래 UI | seogu-Jeong | 🔲 진행 중 |
 
@@ -130,22 +130,27 @@
 
 ---
 
-## Phase 3 — AI 예측 + 시그널 + 패턴 인식 🔲
+## Phase 3 — AI 예측 + 시그널 + 패턴 인식 ✅
+
+**완료일:** 2026-06-04 | **테스트:** 65 passed (통합) + 23 passed (유닛)
 
 **목표:** LSTM 모델로 5일 예측, 기술적 지표 기반 종합 시그널, 캔들 패턴 감지
 
-### 구현 예정 항목
+### 구현 완료 항목
 
-| 컴포넌트 | 파일 | 설명 |
+| 컴포넌트 | 파일 | 상태 |
 |---|---|---|
-| LSTM 모델 | `backend/ml/model.py` | 입력(batch,60,13) → 출력(batch,5) 변화율 예측, Attention 포함 |
-| 피처 엔지니어링 | `backend/ml/features.py` | pandas-ta: RSI, MACD, BB, MA5/20/60, Stoch (13 피처) |
-| 학습 스크립트 | `backend/ml/train.py` | Huber Loss + AdamW + CosineAnnealingLR, Early Stopping |
-| 추론 | `backend/ml/predict.py` | Monte Carlo Dropout 50회 → bullish/base/bearish 시나리오 |
-| 유사 패턴 매칭 | `backend/ml/pattern_matcher.py` | 히스토리에서 유사 패턴 Top 5 검색 |
-| AI 서비스 | `backend/services/ai_service.py` | 기술적 지표 40% + LSTM 60% 가중 합산 → BUY/HOLD/SELL |
-| 패턴 서비스 | `backend/services/pattern_service.py` | pandas-ta `cdl_pattern()` (14종 패턴) |
-| Celery AI 태스크 | `backend/tasks/ai_tasks.py` | 장 종료 후(15:35) 전 종목 시그널 갱신 |
+| LSTM 모델 | `backend/ml/model.py` | ✅ |
+| 피처 엔지니어링 (13개) | `backend/ml/features.py` | ✅ |
+| 학습 스크립트 (코스피 상위 100) | `backend/ml/train.py` | ✅ |
+| 추론 (MC Dropout 50회) | `backend/ml/predict.py` | ✅ |
+| 유사 패턴 매칭 Top 5 | `backend/ml/pattern_matcher.py` | ✅ |
+| AI 서비스 (지표 40% + LSTM 60%) | `backend/services/ai_service.py` | ✅ |
+| 패턴 서비스 (14종) | `backend/services/pattern_service.py` | ✅ |
+| Celery AI 태스크 | `backend/tasks/ai_tasks.py` | ✅ |
+| AI 라우터 8개 엔드포인트 | `backend/api/routes/ai.py` | ✅ |
+| APScheduler (15:35 KST) | `backend/main.py` | ✅ |
+| Phase 3+4 DB 마이그레이션 | `db/migrations/versions/` | ✅ |
 
 ### AI API 엔드포인트 (`/ai`)
 
