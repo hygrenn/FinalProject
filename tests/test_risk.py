@@ -69,3 +69,54 @@ async def test_check_order_warning_mode(client):
                     result = await check_order(user, "005930", 1, 50_000, db)
                     assert result is not None
                     assert "한도" in result
+
+
+async def test_get_risk_settings_returns_200(client):
+    """인증된 유저는 리스크 설정 조회 가능."""
+    from main import app
+    from api.deps import get_current_user
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.mode = "paper"
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    mock_settings = _make_risk_settings()
+    mock_settings.stop_loss_enabled = True
+    mock_settings.trading_blocked = False
+
+    with patch("api.routes.risk.get_or_create_settings", new_callable=AsyncMock,
+               return_value=mock_settings):
+        resp = await client.get("/risk/settings")
+
+    app.dependency_overrides.clear()
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "max_per_stock_pct" in data
+    assert "enforce_hard_stop" in data
+
+
+async def test_put_risk_settings_returns_200(client):
+    """리스크 설정 수정."""
+    from main import app
+    from api.deps import get_current_user
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.mode = "paper"
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    mock_settings = _make_risk_settings()
+    mock_settings.max_per_stock_pct = 20.0
+    mock_settings.daily_loss_limit_pct = 5.0
+    mock_settings.stop_loss_enabled = False
+    mock_settings.enforce_hard_stop = True
+    mock_settings.trading_blocked = False
+
+    with patch("api.routes.risk.get_or_create_settings", new_callable=AsyncMock,
+               return_value=mock_settings):
+        resp = await client.put("/risk/settings", json={"max_per_stock_pct": 30.0})
+
+    app.dependency_overrides.clear()
+    assert resp.status_code == 200
+    assert resp.json()["updated"] is True
