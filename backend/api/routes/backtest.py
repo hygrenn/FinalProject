@@ -3,7 +3,7 @@ import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,12 +21,12 @@ class BacktestRequest(BaseModel):
     code: str
     start_date: date
     end_date: date
-    initial_cash: int = 10_000_000
-    entry_signal_score: float = 65.0
-    exit_signal_score: float = 35.0
-    stop_loss_pct: float = 0.05
-    take_profit_pct: float = 0.15
-    commission_rate: float = 0.00015
+    initial_cash: int = Field(default=10_000_000, gt=0)
+    entry_signal_score: float = Field(default=65.0, ge=0, le=100)
+    exit_signal_score: float = Field(default=35.0, ge=0, le=100)
+    stop_loss_pct: float = Field(default=0.05, ge=0, le=1)
+    take_profit_pct: float = Field(default=0.15, ge=0, le=1)
+    commission_rate: float = Field(default=0.00015, ge=0, le=0.01)
 
     @field_validator("end_date")
     @classmethod
@@ -35,6 +35,12 @@ class BacktestRequest(BaseModel):
         if start and v <= start:
             raise ValueError("end_date must be after start_date")
         return v
+
+    @model_validator(mode="after")
+    def entry_above_exit(self) -> "BacktestRequest":
+        if self.entry_signal_score <= self.exit_signal_score:
+            raise ValueError("entry_signal_score는 exit_signal_score보다 커야 합니다.")
+        return self
 
 
 def _serialize_result(r: BacktestResult) -> dict:

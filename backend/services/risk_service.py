@@ -92,6 +92,8 @@ async def check_order(
     한도 초과 + enforce_hard_stop=True → HTTPException 400
     """
     settings = await get_or_create_settings(user.id, db)
+    if settings.trading_blocked:
+        raise HTTPException(status_code=400, detail="거래가 차단된 상태입니다. 리스크 설정에서 확인하세요.")
     mode = user.mode
 
     portfolio_total = await _get_portfolio_total(user.id, mode, db)

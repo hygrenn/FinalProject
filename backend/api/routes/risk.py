@@ -1,5 +1,5 @@
 # backend/api/routes/risk.py
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +12,8 @@ router = APIRouter()
 
 
 class RiskSettingsUpdate(BaseModel):
-    max_per_stock_pct: float | None = None
-    daily_loss_limit_pct: float | None = None
+    max_per_stock_pct: float | None = Field(default=None, ge=0, le=100)
+    daily_loss_limit_pct: float | None = Field(default=None, ge=0, le=100)
     stop_loss_enabled: bool | None = None
     enforce_hard_stop: bool | None = None
 

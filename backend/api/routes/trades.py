@@ -1,12 +1,15 @@
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Literal
 
 from api.deps import get_current_user, get_db
 from api.middleware.rate_limit import limiter
+from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
 from services import kis_service, risk_service
@@ -17,10 +20,23 @@ router = APIRouter()
 
 class OrderRequest(BaseModel):
     stock_code: str
-    order_type: str   # "BUY" | "SELL"
-    price_type: str   # "MARKET" | "LIMIT"
-    quantity: int
-    price: int = 0
+    order_type: Literal["BUY", "SELL"]
+    price_type: Literal["MARKET", "LIMIT"]
+    quantity: int = Field(gt=0)
+    price: int = Field(ge=0, default=0)
+
+    @field_validator("stock_code")
+    @classmethod
+    def valid_stock_code(cls, v: str) -> str:
+        if not re.fullmatch(r"\d{6}", v):
+            raise ValueError("stock_code는 6자리 숫자여야 합니다.")
+        return v
+
+    @model_validator(mode="after")
+    def limit_requires_price(self) -> "OrderRequest":
+        if self.price_type == "LIMIT" and self.price <= 0:
+            raise ValueError("LIMIT 주문은 price > 0 이어야 합니다.")
+        return self
 
 
 @router.post("/order")
@@ -33,6 +49,22 @@ async def place_order(
 ):
     if user.mode == "demo":
         raise HTTPException(status_code=403, detail="KIS 키를 먼저 등록하세요.")
+
+    if body.order_type == "SELL":
+        result = await db.execute(
+            select(Portfolio).where(
+                Portfolio.user_id == user.id,
+                Portfolio.stock_code == body.stock_code,
+                Portfolio.mode == user.mode,
+            )
+        )
+        holding = result.scalar_one_or_none()
+        available = holding.quantity if holding else 0
+        if available < body.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"보유 수량 부족: {available}주 보유, {body.quantity}주 매도 요청",
+            )
 
     warning = await risk_service.check_order(user, body.stock_code, body.quantity, body.price, db)
 
@@ -121,6 +153,13 @@ async def cancel_trade(
         raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
     if trade.status != "PENDING":
         raise HTTPException(status_code=400, detail=f"취소 불가 상태: {trade.status}")
+    if trade.mode != user.mode:
+        raise HTTPException(
+            status_code=409,
+            detail=f"주문 모드({trade.mode})와 현재 모드({user.mode})가 달라 취소할 수 없습니다.",
+        )
+    if not trade.kis_order_no:
+        raise HTTPException(status_code=400, detail="KIS 주문번호가 없어 취소할 수 없습니다.")
 
     await kis_service.cancel_order(user, trade.kis_order_no)
     trade.status = "CANCELLED"

@@ -1,8 +1,14 @@
 # backend/services/kis_service.py
 from __future__ import annotations
 
+import logging
+from datetime import date as _date, datetime, timedelta, timezone
+
 import httpx
 from fastapi import HTTPException
+
+_logger = logging.getLogger(__name__)
+_KST = timezone(timedelta(hours=9))
 
 from core.security import decrypt_aes
 from services.kis_token_service import get_access_token
@@ -181,7 +187,8 @@ async def poll_fill(user, kis_order_no: str) -> dict | None:
             )
             resp.raise_for_status()
             data = resp.json()
-    except Exception:
+    except Exception as exc:
+        _logger.error("poll_fill KIS 조회 실패 (order_no=%s): %s", kis_order_no, exc)
         return None
 
     output = data.get("output1", [])
@@ -190,9 +197,21 @@ async def poll_fill(user, kis_order_no: str) -> dict | None:
             return {
                 "executed_price": int(item.get("avg_prvs", 0)),
                 "filled_qty": int(item.get("tot_ccld_qty", 0)),
-                "filled_at": item.get("ord_tmd", ""),
+                "filled_at": _parse_ord_tmd(item.get("ord_tmd", "")),
             }
     return None
+
+
+def _parse_ord_tmd(ord_tmd: str) -> datetime | None:
+    """KIS ord_tmd (HHMMSS) → KST aware datetime (today 기준)."""
+    if not ord_tmd or len(ord_tmd) < 6:
+        return None
+    try:
+        today = _date.today()
+        h, m, s = int(ord_tmd[0:2]), int(ord_tmd[2:4]), int(ord_tmd[4:6])
+        return datetime(today.year, today.month, today.day, h, m, s, tzinfo=_KST)
+    except (ValueError, IndexError):
+        return None
 
 
 async def get_balance(user) -> dict:

@@ -2,7 +2,7 @@
 import uuid as _uuid
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +33,7 @@ class AlertSettingsUpdate(BaseModel):
     daily_loss_limit: bool | None = None
     trade_filled: bool | None = None
     weekly_report: bool | None = None
-    notification_email: str | None = None
+    notification_email: EmailStr | None = None
 
 
 @router.get("/settings")

@@ -6,11 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-def _make_risk_settings(max_per_stock_pct=20.0, daily_loss_limit_pct=5.0, enforce_hard_stop=True):
+def _make_risk_settings(
+    max_per_stock_pct=20.0,
+    daily_loss_limit_pct=5.0,
+    enforce_hard_stop=True,
+    trading_blocked=False,
+):
     rs = MagicMock()
     rs.max_per_stock_pct = Decimal(str(max_per_stock_pct))
     rs.daily_loss_limit_pct = Decimal(str(daily_loss_limit_pct))
     rs.enforce_hard_stop = enforce_hard_stop
+    rs.trading_blocked = trading_blocked
     return rs
 
 

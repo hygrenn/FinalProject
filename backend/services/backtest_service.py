@@ -70,16 +70,18 @@ def _compute_daily_scores(df: pd.DataFrame) -> list[tuple[str, float, float]]:
 def _simulate(
     daily: list[tuple[str, float, float]],
     config: BacktestConfig,
-) -> tuple[list[dict], list[float]]:
+) -> tuple[list[dict], list[float], dict | None]:
     """
     매매 시뮬레이션.
-    반환: (trades_log, equity_curve)
+    반환: (trades_log, equity_curve, open_position)
     trades_log: [{entry_date, exit_date, entry_price, exit_price, shares, pnl, reason}]
     equity_curve: 날짜별 평가금액 리스트
+    open_position: 기간 종료 시 미청산 포지션 정보 or None
     """
     cash = float(config.initial_cash)
     position = 0
     entry_price = 0.0
+    entry_cost = 0.0
     trades_log: list[dict] = []
     equity_curve: list[float] = []
     entry_date = ""
@@ -97,6 +99,7 @@ def _simulate(
                 cash -= cost
                 position = shares
                 entry_price = price
+                entry_cost = cost
                 entry_date = date_str
 
         # 청산 조건
@@ -112,7 +115,7 @@ def _simulate(
 
             if reason:
                 revenue = position * price * (1 - config.commission_rate)
-                pnl = revenue - position * entry_price
+                pnl = revenue - entry_cost
                 trades_log.append({
                     "entry_date": entry_date,
                     "exit_date": date_str,
@@ -125,10 +128,22 @@ def _simulate(
                 cash += revenue
                 position = 0
                 entry_price = 0.0
+                entry_cost = 0.0
 
         equity_curve.append(cash + position * price)
 
-    return trades_log, equity_curve
+    open_position = None
+    if position > 0 and daily:
+        last_price = daily[-1][1]
+        open_position = {
+            "shares": position,
+            "entry_date": entry_date,
+            "entry_price": round(entry_price),
+            "last_price": round(last_price),
+            "unrealized_pnl": round(position * last_price * (1 - config.commission_rate) - entry_cost),
+        }
+
+    return trades_log, equity_curve, open_position
 
 
 def _compute_metrics(
@@ -202,7 +217,12 @@ async def run_backtest(
     if isinstance(user_id, str):
         user_id = _uuid.UUID(user_id)
 
-    df = await asyncio.to_thread(_fetch_ohlcv, config.code, config.start_date, config.end_date)
+    try:
+        df = await asyncio.to_thread(_fetch_ohlcv, config.code, config.start_date, config.end_date)
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"시세 데이터 조회 실패: {exc}") from exc
+
     if df.empty:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"{config.code} 데이터를 가져올 수 없습니다.")
@@ -212,8 +232,18 @@ async def run_backtest(
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="지표 계산에 충분한 데이터가 없습니다.")
 
-    trades_log, equity_curve = _simulate(daily, config)
+    trades_log, equity_curve, open_position = _simulate(daily, config)
     metrics = _compute_metrics(equity_curve, trades_log, config.initial_cash)
+
+    dates = [d[0] for d in daily]
+    equity_with_dates = [
+        {"date": dates[i], "equity": round(equity_curve[i])}
+        for i in range(0, len(equity_curve), 5)
+    ]
+
+    result_detail: dict = {"trades": trades_log, "equity_curve": equity_with_dates}
+    if open_position:
+        result_detail["open_position"] = open_position
 
     result = BacktestResult(
         user_id=user_id,
@@ -233,10 +263,7 @@ async def run_backtest(
         sharpe_ratio=metrics["sharpe_ratio"],
         win_rate_pct=metrics["win_rate_pct"],
         total_trades=len(trades_log),
-        result_detail={
-            "trades": trades_log,
-            "equity_curve": equity_curve[::5],
-        },
+        result_detail=result_detail,
     )
     db.add(result)
     await db.commit()
