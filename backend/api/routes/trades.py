@@ -13,6 +13,7 @@ from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
 from services import kis_service, risk_service
+from services.market_service import get_stock_current_price
 from tasks.order_tasks import poll_order_fill
 
 router = APIRouter()
@@ -66,7 +67,21 @@ async def place_order(
                 detail=f"보유 수량 부족: {available}주 보유, {body.quantity}주 매도 요청",
             )
 
-    warning = await risk_service.check_order(user, body.stock_code, body.quantity, body.price, db)
+    # 시장가 주문은 현재가로 리스크 계산 (price=0이면 체크 우회되므로)
+    risk_price = body.price
+    if body.price_type == "MARKET":
+        try:
+            price_data = await get_stock_current_price(body.stock_code)
+            risk_price = price_data.get("close", 0)
+        except Exception:
+            risk_price = 0
+        if risk_price == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="시장가 주문의 현재가를 조회할 수 없습니다. 잠시 후 다시 시도하세요.",
+            )
+
+    warning = await risk_service.check_order(user, body.stock_code, body.quantity, risk_price, db)
 
     result = await kis_service.place_order(
         user, body.stock_code, body.order_type, body.price_type, body.quantity, body.price

@@ -32,6 +32,13 @@ async def _poll_async(task, trade_id: str, user_id: str, kis_order_no: str, mode
         if fill is None:
             if task.request.retries < task.max_retries:
                 raise task.retry()
+            # 최대 재시도 초과 → UNKNOWN으로 표시 (수동 확인 필요)
+            await db.execute(
+                update(Trade)
+                .where(Trade.id == trade_uuid)
+                .values(status="UNKNOWN")
+            )
+            await db.commit()
             return
 
         await db.execute(
