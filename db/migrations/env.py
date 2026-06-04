@@ -11,7 +11,13 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from core.database import Base
-from models.user import RefreshToken, User  # noqa: F401 — registers models with Base
+from models.ai_signal import AISignalHistory  # noqa: F401
+from models.backtest import BacktestResult  # noqa: F401
+from models.portfolio import Portfolio  # noqa: F401
+from models.risk import AlertSettings, RiskSettings  # noqa: F401
+from models.trade import Trade  # noqa: F401
+from models.user import RefreshToken, User  # noqa: F401
+from models.watchlist import WatchlistGroup, WatchlistItem  # noqa: F401
 
 config = context.config
 
