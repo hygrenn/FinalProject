@@ -34,7 +34,9 @@ def _tr_id(action: str, mode: str) -> str:
 
 
 def _get_keys(user) -> tuple[str, str, str]:
-    """user.mode에 따라 (app_key, app_secret, account_no) 복호화 반환."""
+    """user.mode에 따라 (app_key, app_secret, account_no) 복호화 반환.
+    account_no는 하이픈 제거 후 반환 (예: '12345678-01' → '1234567801').
+    """
     mode = user.mode
     if mode == "paper":
         if not user.kis_paper_key_enc:
@@ -42,7 +44,7 @@ def _get_keys(user) -> tuple[str, str, str]:
         return (
             decrypt_aes(user.kis_paper_key_enc),
             decrypt_aes(user.kis_paper_secret_enc),
-            user.kis_paper_account_no,
+            (user.kis_paper_account_no or "").replace("-", ""),
         )
     else:
         if not user.kis_real_key_enc:
@@ -50,7 +52,7 @@ def _get_keys(user) -> tuple[str, str, str]:
         return (
             decrypt_aes(user.kis_real_key_enc),
             decrypt_aes(user.kis_real_secret_enc),
-            user.kis_real_account_no,
+            (user.kis_real_account_no or "").replace("-", ""),
         )
 
 
