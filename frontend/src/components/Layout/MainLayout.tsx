@@ -5,7 +5,7 @@ import { Sidebar } from '@/components/Sidebar/Sidebar'
 import { MainPanel } from '@/components/MainPanel/MainPanel'
 import { WatchlistPanel } from '@/components/WatchlistPanel/WatchlistPanel'
 import { useUIStore } from '@/store/uiStore'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { LoginModal } from '@/components/auth/LoginModal'
 import { RegisterModal } from '@/components/auth/RegisterModal'
 import { OrderBook } from '@/components/Trade/OrderBook'
@@ -15,7 +15,9 @@ import { useStockStore } from '@/store/stockStore'
 export function MainLayout() {
   const { sidebarOpen } = useUIStore()
   const [modal, setModal] = useState<'login' | 'register' | null>(null)
-  const { selectedStock, realtimePrice } = useStockStore()
+  const { selectedStock, realtimePrice, loadStocks } = useStockStore()
+
+  useEffect(() => { loadStocks() }, [])
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">

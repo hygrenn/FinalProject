@@ -17,7 +17,6 @@ from models.portfolio import Portfolio  # noqa: F401
 from models.risk import AlertSettings, RiskSettings  # noqa: F401
 from models.trade import Trade  # noqa: F401
 from models.user import RefreshToken, User  # noqa: F401
-from models.price_cache import PriceCache  # noqa: F401
 from models.watchlist import WatchlistGroup, WatchlistItem  # noqa: F401
 
 config = context.config

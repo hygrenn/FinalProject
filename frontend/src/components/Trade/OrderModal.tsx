@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { Stock } from '@/types'
 import { cn } from '@/lib/utils'
+import api from '@/lib/api'
+import { useAuthStore } from '@/store/authStore'
 
 interface OrderModalProps {
   open: boolean
@@ -17,17 +19,31 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
   const [quantity, setQuantity] = useState('1')
   const [price, setPrice] = useState(String(stock.price ?? 0))
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const user = useAuthStore((s) => s.user)
 
   const isBuy = orderType === 'BUY'
   const total = Number(quantity) * Number(price)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setSubmitted(true)
-    setTimeout(() => {
+    try {
+      await api.post('/trades/order', {
+        stock_code: stock.code,
+        order_type: orderType,
+        price_type: priceType,
+        quantity: Number(quantity),
+        price: priceType === 'LIMIT' ? Number(price) : undefined,
+        mode: user?.mode ?? 'paper',
+      })
+      setTimeout(() => { setSubmitted(false); onClose() }, 1500)
+    } catch (err: unknown) {
       setSubmitted(false)
-      onClose()
-    }, 1500)
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(msg ?? '주문 처리 중 오류가 발생했습니다')
+    }
   }
 
   return (
@@ -46,11 +62,10 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
             <div className={cn('text-2xl font-bold mb-2', isBuy ? 'text-green-400' : 'text-red-400')}>
               {isBuy ? '매수 완료' : '매도 완료'}
             </div>
-            <div className="text-sm text-muted-foreground">모의거래 체결됨</div>
+            <div className="text-sm text-muted-foreground">주문이 접수되었습니다</div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
-            {/* 주문 타입 */}
             <div className="flex gap-2">
               {(['LIMIT', 'MARKET'] as const).map((type) => (
                 <Button
@@ -93,6 +108,10 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
               <div className="text-sm text-right text-muted-foreground">
                 주문금액: <span className="text-foreground font-medium">{total.toLocaleString()}원</span>
               </div>
+            )}
+
+            {error && (
+              <div className="text-xs text-red-400">{error}</div>
             )}
 
             <div className="flex gap-2 pt-1">

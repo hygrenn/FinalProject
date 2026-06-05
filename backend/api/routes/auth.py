@@ -290,24 +290,3 @@ async def register_api_key(
     current_user.mode = body.mode
     await db.commit()
     return {"message": "KIS API 키가 등록되었습니다", "test_result": test_result}
-
-
-class ModeUpdate(BaseModel):
-    mode: Literal["paper", "real"]
-
-
-@router.put("/mode")
-@limiter.limit("10/minute")
-async def switch_mode(
-    request: Request,
-    body: ModeUpdate,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    if body.mode == "paper" and not user.kis_paper_key_enc:
-        raise HTTPException(status_code=400, detail="모의투자 KIS 키가 등록되지 않았습니다.")
-    if body.mode == "real" and not user.kis_real_key_enc:
-        raise HTTPException(status_code=400, detail="실거래 KIS 키가 등록되지 않았습니다.")
-    user.mode = body.mode
-    await db.commit()
-    return {"mode": body.mode}

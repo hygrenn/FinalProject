@@ -1,35 +1,35 @@
 import { useEffect, useState } from 'react'
-import { MockWebSocket } from '@/lib/mockWebSocket'
 import { useStockStore } from '@/store/stockStore'
 
-const WS_BASE = import.meta.env.VITE_WS_BASE ?? null
+const API_BASE = import.meta.env.VITE_API_BASE ?? null
 
 export function useStockWebSocket(stockCode: string): { isConnected: boolean } {
   const [isConnected, setIsConnected] = useState(false)
   const updateRealtimePrice = useStockStore((s) => s.updateRealtimePrice)
 
   useEffect(() => {
-    const url = WS_BASE
-      ? `${WS_BASE}/ws/stocks/${stockCode}`
-      : `mock://stocks/${stockCode}`
+    if (!stockCode) return
 
-    const ws = WS_BASE
-      ? (new WebSocket(url) as unknown as MockWebSocket)
-      : new MockWebSocket(url)
+    if (!API_BASE || typeof EventSource === 'undefined') {
+      setIsConnected(true)
+      const timer = setInterval(() => {
+        const mockPrice = 70000 + Math.round(Math.random() * 10000)
+        updateRealtimePrice({ code: stockCode, price: mockPrice, change_pct: +(Math.random() * 4 - 2).toFixed(2) })
+      }, 3000)
+      return () => { clearInterval(timer); setIsConnected(false) }
+    }
 
-    ws.onopen = () => setIsConnected(true)
-    ws.onclose = () => setIsConnected(false)
-    ws.onmessage = (event) => {
+    const es = new EventSource(`${API_BASE}/ws/stocks/${stockCode}`)
+    es.onopen = () => setIsConnected(true)
+    es.onerror = () => setIsConnected(false)
+    es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
         updateRealtimePrice({ code: stockCode, price: data.price, change_pct: data.change_pct })
       } catch {}
     }
 
-    return () => {
-      ws.close()
-      setIsConnected(false)
-    }
+    return () => { es.close(); setIsConnected(false) }
   }, [stockCode, updateRealtimePrice])
 
   return { isConnected }

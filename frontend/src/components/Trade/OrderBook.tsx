@@ -1,5 +1,4 @@
 import type { OrderBookEntry } from '@/types'
-import { cn } from '@/lib/utils'
 
 interface OrderBookProps {
   asks: OrderBookEntry[]

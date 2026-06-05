@@ -21,7 +21,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { data } = await api.post('/auth/login', { email, password })
       useAuthTokenRef.setToken(data.access_token)
-      set({ user: data.user, isLoading: false })
+      const { data: user } = await api.get('/auth/me')
+      set({ user, isLoading: false })
     } catch (e) {
       set({ isLoading: false })
       throw e
