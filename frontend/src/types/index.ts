@@ -5,7 +5,6 @@ export interface User {
   id: string
   email: string
   mode: 'demo' | 'paper' | 'real'
-  access_allowed: boolean
   is_verified: boolean
   dark_mode: boolean
 }
@@ -53,9 +52,9 @@ export interface Holding {
   quantity: number
   avg_price: number
   current_price: number
+  eval_amount: number
   profit_loss: number
   return_pct: number
-  ai_signal: 'BUY' | 'HOLD' | 'SELL'
 }
 
 export interface OrderRequest {
@@ -134,13 +133,23 @@ export interface OrderBookEntry {
 }
 
 export interface PortfolioMetrics {
-  total_value: number
+  total_trades: number
+  win_rate_pct: number
+  sharpe_ratio: number
+  mdd_pct: number
+}
+
+export interface PortfolioResponse {
+  holdings: Holding[]
+  total_eval: number
+  total_cost: number
   total_return_pct: number
-  mdd: number
 }
 
 export interface RiskSettings {
-  max_position_pct: number
-  stop_loss_pct: number
-  daily_loss_limit: number
+  max_per_stock_pct: number
+  daily_loss_limit_pct: number
+  stop_loss_enabled: boolean
+  enforce_hard_stop: boolean
+  trading_blocked: boolean
 }

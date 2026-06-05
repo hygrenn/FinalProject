@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import type { Stock, RealtimePrice } from '@/types'
 import { MOCK_STOCKS, MOCK_WATCHLIST } from '@/lib/mockData'
+import api from '@/lib/api'
 
 interface StockState {
   selectedStock: Stock | null
@@ -12,6 +13,8 @@ interface StockState {
   addToWatchlist: (code: string) => void
   removeFromWatchlist: (code: string) => void
   updateRealtimePrice: (data: RealtimePrice) => void
+  loadStocks: () => Promise<void>
+  searchStocks: (q: string) => Promise<Stock[]>
 }
 
 export const useStockStore = create<StockState>((set) => ({
@@ -35,4 +38,35 @@ export const useStockStore = create<StockState>((set) => ({
     })),
 
   updateRealtimePrice: (data) => set({ realtimePrice: data }),
+
+  loadStocks: async () => {
+    try {
+      const { data } = await api.get('/stocks', { params: { limit: 100 } })
+      const stocks: Stock[] = (data.stocks ?? data ?? []).map((s: { code: string; name: string; close?: number; change_pct?: number }) => ({
+        code: s.code,
+        name: s.name,
+        price: s.close,
+        change_pct: s.change_pct,
+      }))
+      if (stocks.length > 0) {
+        set({ stockList: stocks, selectedStock: stocks[0] })
+      }
+    } catch {
+      // fallback to mock data
+    }
+  },
+
+  searchStocks: async (q: string): Promise<Stock[]> => {
+    try {
+      const { data } = await api.get('/stocks/search', { params: { q } })
+      return (data.stocks ?? data ?? []).map((s: { code: string; name: string; close?: number; change_pct?: number }) => ({
+        code: s.code,
+        name: s.name,
+        price: s.close,
+        change_pct: s.change_pct,
+      }))
+    } catch {
+      return []
+    }
+  },
 }))

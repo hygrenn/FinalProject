@@ -118,9 +118,9 @@ export const MOCK_ORDER_BOOK = {
 }
 
 export const MOCK_HOLDINGS: Holding[] = [
-  { stock_code: '005930', stock_name: '삼성전자', quantity: 10, avg_price: 70000, current_price: 73400, profit_loss: 34000, return_pct: 4.86, ai_signal: 'BUY' },
-  { stock_code: '000660', stock_name: 'SK하이닉스', quantity: 5, avg_price: 180000, current_price: 185000, profit_loss: 25000, return_pct: 2.78, ai_signal: 'HOLD' },
-  { stock_code: '035420', stock_name: 'NAVER', quantity: 3, avg_price: 220000, current_price: 210000, profit_loss: -30000, return_pct: -4.55, ai_signal: 'SELL' },
+  { stock_code: '005930', stock_name: '삼성전자', quantity: 10, avg_price: 70000, current_price: 73400, eval_amount: 734000, profit_loss: 34000, return_pct: 4.86 },
+  { stock_code: '000660', stock_name: 'SK하이닉스', quantity: 5, avg_price: 180000, current_price: 185000, eval_amount: 925000, profit_loss: 25000, return_pct: 2.78 },
+  { stock_code: '035420', stock_name: 'NAVER', quantity: 3, avg_price: 220000, current_price: 210000, eval_amount: 630000, profit_loss: -30000, return_pct: -4.55 },
 ]
 
 export const MOCK_PORTFOLIO_PERFORMANCE: { date: string; value: number }[] = Array.from({ length: 30 }, (_, i) => {
@@ -133,9 +133,10 @@ export const MOCK_PORTFOLIO_PERFORMANCE: { date: string; value: number }[] = Arr
 })
 
 export const MOCK_PORTFOLIO_METRICS: PortfolioMetrics = {
-  total_value: 5290000,
-  total_return_pct: 5.8,
-  mdd: -3.2,
+  total_trades: 24,
+  win_rate_pct: 62.5,
+  sharpe_ratio: 1.23,
+  mdd_pct: 3.2,
 }
 
 export const MOCK_BACKTEST_RESULT = {
