@@ -6,7 +6,6 @@ describe('types', () => {
       id: '1',
       email: 'test@test.com',
       mode: 'demo',
-      access_allowed: true,
       is_verified: true,
       dark_mode: true,
     }
@@ -50,8 +49,8 @@ describe('types', () => {
     expect(entry.price).toBe(73400)
   })
 
-  it('PortfolioMetrics has total_value, return_pct, mdd', () => {
-    const m: PortfolioMetrics = { total_value: 5000000, total_return_pct: 12.5, mdd: -8.3 }
-    expect(m.total_return_pct).toBe(12.5)
+  it('PortfolioMetrics has mdd_pct, win_rate_pct, sharpe_ratio, total_trades', () => {
+    const m: PortfolioMetrics = { total_trades: 24, win_rate_pct: 62.5, sharpe_ratio: 1.23, mdd_pct: 3.2 }
+    expect(m.win_rate_pct).toBe(62.5)
   })
 })

@@ -10,7 +10,7 @@ export function useStockWebSocket(stockCode: string): { isConnected: boolean } {
   useEffect(() => {
     if (!stockCode) return
 
-    if (!API_BASE) {
+    if (!API_BASE || typeof EventSource === 'undefined') {
       setIsConnected(true)
       const timer = setInterval(() => {
         const mockPrice = 70000 + Math.round(Math.random() * 10000)
