@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -116,19 +117,15 @@ async def get_stock_current_price(code: str) -> dict:
 
 
 def _build_ticker_cache(market_str: str) -> list[dict]:
-    """Fetch tickers with names from pykrx and return as [{code, name}] list."""
-    try:
-        codes = pykrx_stock.get_market_ticker_list(market=market_str)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"종목 목록 조회 실패: {exc}") from exc
-    result = []
-    for code in codes:
-        try:
-            name = pykrx_stock.get_market_ticker_name(code)
-        except Exception:
-            name = ""
-        result.append({"code": code, "name": name})
-    return result
+    """top100_codes.txt + stock_names.json 기반 종목 목록 반환."""
+    base = Path(__file__).parent.parent / "ml"
+    codes_path = base / "top100_codes.txt"
+    names_path = base / "stock_names.json"
+
+    codes = codes_path.read_text().strip().splitlines() if codes_path.exists() else []
+    names: dict = json.loads(names_path.read_text()) if names_path.exists() else {}
+
+    return [{"code": c.strip(), "name": names.get(c.strip(), c.strip())} for c in codes if c.strip()]
 
 
 async def _get_ticker_list(market: str) -> list[dict]:
