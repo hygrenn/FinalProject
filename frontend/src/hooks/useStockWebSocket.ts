@@ -11,8 +11,8 @@ export function useStockWebSocket(stockCode: string): { isConnected: boolean } {
     if (!stockCode) return
 
     if (!API_BASE || typeof EventSource === 'undefined') {
-      setIsConnected(true)
       const timer = setInterval(() => {
+        setIsConnected(true)
         const mockPrice = 70000 + Math.round(Math.random() * 10000)
         updateRealtimePrice({ code: stockCode, price: mockPrice, change_pct: +(Math.random() * 4 - 2).toFixed(2) })
       }, 3000)
@@ -26,7 +26,7 @@ export function useStockWebSocket(stockCode: string): { isConnected: boolean } {
       try {
         const data = JSON.parse(event.data)
         updateRealtimePrice({ code: stockCode, price: data.price, change_pct: data.change_pct })
-      } catch {}
+      } catch { /* malformed SSE message, ignore */ }
     }
 
     return () => { es.close(); setIsConnected(false) }

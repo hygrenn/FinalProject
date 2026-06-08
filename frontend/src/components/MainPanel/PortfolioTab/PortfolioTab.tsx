@@ -92,7 +92,7 @@ export function PortfolioTab() {
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
               <Tooltip
-                formatter={(v) => [`${Number(v).toLocaleString()}원`, '누적 손익']}
+                formatter={(v: number) => [`${v.toLocaleString()}원`, '누적 손익']}
                 contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }}
               />
               <Line type="monotone" dataKey="value" stroke="#58a6ff" dot={false} strokeWidth={1.5} />

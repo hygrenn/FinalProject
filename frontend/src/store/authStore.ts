@@ -9,6 +9,7 @@ interface AuthState {
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  initAuth: () => Promise<void>
   setUser: (user: User) => void
 }
 
@@ -35,6 +36,17 @@ export const useAuthStore = create<AuthState>((set) => ({
     } finally {
       useAuthTokenRef.clearToken()
       set({ user: null })
+    }
+  },
+
+  initAuth: async () => {
+    try {
+      const { data: refreshData } = await api.post('/auth/refresh', {}, { withCredentials: true })
+      useAuthTokenRef.setToken(refreshData.access_token)
+      const { data: user } = await api.get('/auth/me')
+      set({ user })
+    } catch {
+      // no valid session
     }
   },
 

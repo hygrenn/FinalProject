@@ -7,12 +7,19 @@ import { useAuthStore } from '@/store/authStore'
 
 export default function App() {
   const [entered, setEntered] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
   const { darkMode } = useUIStore()
-  const { user } = useAuthStore()
+  const { user, initAuth } = useAuthStore()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
+
+  useEffect(() => {
+    initAuth().finally(() => setAuthChecked(true))
+  }, [initAuth])
+
+  if (!authChecked) return null
 
   if (!entered && !user) {
     return <LandingPage onEnter={() => setEntered(true)} />

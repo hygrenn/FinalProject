@@ -1,6 +1,6 @@
 // frontend/src/components/MainPanel/ChartTab/ChartTab.tsx
 import { useStockStore } from '@/store/stockStore'
-import { MOCK_CANDLES, MOCK_STOCK_DETAILS, MOCK_PREDICTION, MOCK_PATTERNS } from '@/lib/mockData'
+import { MOCK_CANDLES, MOCK_PREDICTION, MOCK_PATTERNS } from '@/lib/mockData'
 import { calculateRSI, calculateMACD } from '@/lib/indicators'
 import { useStockWebSocket } from '@/hooks/useStockWebSocket'
 import { StockInfoBar } from './StockInfoBar'
@@ -11,7 +11,7 @@ import { RSIChart } from './RSIChart'
 import { MACDChart } from './MACDChart'
 import { useMemo, useState, useEffect } from 'react'
 import type { IChartApi } from 'lightweight-charts'
-import type { Candle } from '@/types'
+import type { Candle, CandlePattern, Prediction, StockDetail } from '@/types'
 import api from '@/lib/api'
 
 function yyyymmddToIso(d: string): string {
@@ -23,29 +23,42 @@ export function ChartTab() {
   const { isConnected } = useStockWebSocket(selectedStock?.code ?? '')
   const [chart, setChart] = useState<IChartApi | null>(null)
   const [candles, setCandles] = useState<Candle[]>(MOCK_CANDLES)
+  const [patterns, setPatterns] = useState<CandlePattern[]>(MOCK_PATTERNS)
+  const [prediction, setPrediction] = useState<Prediction>(MOCK_PREDICTION)
+  const [detail, setDetail] = useState<StockDetail | null>(null)
 
   useEffect(() => {
     if (!selectedStock?.code) return
-    api.get(`/stocks/${selectedStock.code}/chart`).then(({ data }) => {
+    const code = selectedStock.code
+
+    api.get(`/stocks/${code}/chart`).then(({ data }) => {
       const raw: { date: string; open: number; high: number; low: number; close: number; volume: number }[] = data.data ?? []
       if (raw.length === 0) return
-      setCandles(raw.map((d) => ({
+      const mapped = raw.map((d) => ({
         time: d.date.length === 8 ? yyyymmddToIso(d.date) : d.date,
         open: d.open,
         high: d.high,
         low: d.low,
         close: d.close,
         volume: d.volume,
-      })))
+      }))
+      setCandles(mapped)
+      const last = raw[raw.length - 1]
+      if (last) setDetail({ open: last.open, high: last.high, low: last.low, volume: last.volume })
+    }).catch(() => {})
+
+    api.get(`/ai/${code}/patterns`).then(({ data }) => {
+      if (data?.patterns?.length) setPatterns(data.patterns)
+    }).catch(() => {})
+
+    api.get(`/ai/${code}/predict`).then(({ data }) => {
+      if (data) setPrediction(data)
     }).catch(() => {})
   }, [selectedStock?.code])
 
   const rsiData = useMemo(() => calculateRSI(candles), [candles])
   const macdData = useMemo(() => calculateMACD(candles), [candles])
   const lastCandleTime = candles[candles.length - 1]?.time ?? '2026-01-01'
-
-  const stockCode = selectedStock?.code ?? '005930'
-  const detail = MOCK_STOCK_DETAILS[stockCode] ?? MOCK_STOCK_DETAILS['005930']
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -58,13 +71,13 @@ export function ChartTab() {
           realtimeChangePct={realtimePrice?.change_pct}
         />
       )}
-      <PatternBadges patterns={MOCK_PATTERNS} />
+      <PatternBadges patterns={patterns} />
       <div className="flex flex-col flex-1 min-h-0 gap-0.5 p-1">
         <div className="flex-[3] min-h-0">
           <CandleChart candles={candles} onChartReady={setChart} />
           <PredictionOverlay
             chart={chart}
-            prediction={MOCK_PREDICTION}
+            prediction={prediction}
             lastCandleTime={lastCandleTime}
           />
         </div>

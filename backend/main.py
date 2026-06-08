@@ -13,6 +13,13 @@ from api.routes import auth as auth_router
 from api.routes import realtime as realtime_router
 from api.routes import stocks as stocks_router
 from api.routes import ai as ai_router
+from api.routes import portfolio as portfolio_router
+from api.routes import trades as trades_router
+from api.routes import backtest as backtest_router
+from api.routes import simulate as simulate_router
+from api.routes import risk as risk_router
+from api.routes import watchlist as watchlist_router
+from api.routes import alerts as alerts_router
 from core.config import settings
 from core.redis_client import close_redis
 from services.websocket_service import kis_pool
@@ -55,6 +62,13 @@ app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
 app.include_router(stocks_router.router, prefix="/stocks", tags=["stocks"])
 app.include_router(realtime_router.router, tags=["realtime"])
 app.include_router(ai_router.router, prefix="/ai", tags=["ai"])
+app.include_router(portfolio_router.router, prefix="/portfolio", tags=["portfolio"])
+app.include_router(trades_router.router, prefix="/trades", tags=["trades"])
+app.include_router(backtest_router.router, prefix="/backtest", tags=["backtest"])
+app.include_router(simulate_router.router, prefix="/simulate", tags=["simulate"])
+app.include_router(risk_router.router, prefix="/risk", tags=["risk"])
+app.include_router(watchlist_router.router, prefix="/watchlist", tags=["watchlist"])
+app.include_router(alerts_router.router, prefix="/alerts", tags=["alerts"])
 
 
 @app.get("/health")

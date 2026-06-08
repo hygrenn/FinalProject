@@ -33,7 +33,7 @@ export function PredictionOverlay({ chart, prediction, lastCandleTime }: Predict
     if (!chart) return
 
     seriesRef.current.forEach((s) => {
-      try { chart.removeSeries(s) } catch {}
+      try { chart.removeSeries(s) } catch { /* series already removed */ }
     })
     seriesRef.current = []
 
@@ -63,7 +63,7 @@ export function PredictionOverlay({ chart, prediction, lastCandleTime }: Predict
 
     return () => {
       seriesRef.current.forEach((s) => {
-        try { chart.removeSeries(s) } catch {}
+        try { chart.removeSeries(s) } catch { /* series already removed */ }
       })
       seriesRef.current = []
     }
