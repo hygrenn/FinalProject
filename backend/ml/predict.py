@@ -1,10 +1,8 @@
 from pathlib import Path
 
 import numpy as np
-import torch
 
 from ml.features import FEATURE_COLS, SEQ_LEN, build_features
-from ml.model import StockLSTM
 
 WEIGHTS_DIR = Path(__file__).parent / "weights"
 
@@ -13,6 +11,11 @@ def load_model(code: str):
     """Returns (StockLSTM, MinMaxScaler) or None if weights not found."""
     path = WEIGHTS_DIR / f"{code}.pth"
     if not path.exists():
+        return None
+    try:
+        import torch
+        from ml.model import StockLSTM
+    except ImportError:
         return None
     checkpoint = torch.load(path, map_location="cpu", weights_only=False)
     model = StockLSTM()
@@ -30,6 +33,7 @@ def predict_scenarios(code: str, df) -> dict | None:
     if result is None:
         return None
     model, scaler = result
+    import torch
 
     feat_df = build_features(df)
     if len(feat_df) < SEQ_LEN:

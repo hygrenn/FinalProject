@@ -34,7 +34,7 @@ async def test_check_order_passes_within_limit(client):
         with patch("services.risk_service._get_portfolio_total", new_callable=AsyncMock, return_value=1_000_000):
             with patch("services.risk_service._get_holding_value", new_callable=AsyncMock, return_value=100_000):
                 with patch("services.risk_service._get_today_loss", new_callable=AsyncMock, return_value=0):
-                    result = await check_order(user, "005930", 1, 50_000, db)
+                    result = await check_order(user, "005930", "BUY", 1, 50_000, db)
                     assert result is None
 
 
@@ -54,7 +54,7 @@ async def test_check_order_hard_stop_raises(client):
             with patch("services.risk_service._get_holding_value", new_callable=AsyncMock, return_value=500_000):
                 with patch("services.risk_service._get_today_loss", new_callable=AsyncMock, return_value=0):
                     with pytest.raises(HTTPException) as exc_info:
-                        await check_order(user, "005930", 1, 50_000, db)
+                        await check_order(user, "005930", "BUY", 1, 50_000, db)
                     assert exc_info.value.status_code == 400
 
 
@@ -72,9 +72,28 @@ async def test_check_order_warning_mode(client):
         with patch("services.risk_service._get_portfolio_total", new_callable=AsyncMock, return_value=1_000_000):
             with patch("services.risk_service._get_holding_value", new_callable=AsyncMock, return_value=500_000):
                 with patch("services.risk_service._get_today_loss", new_callable=AsyncMock, return_value=0):
-                    result = await check_order(user, "005930", 1, 50_000, db)
+                    result = await check_order(user, "005930", "BUY", 1, 50_000, db)
                     assert result is not None
                     assert "한도" in result
+
+
+async def test_check_order_sell_allowed_while_trading_blocked(client):
+    """리스크 차단 상태에서도 포지션 청산을 위한 매도는 허용."""
+    from services.risk_service import check_order
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.mode = "paper"
+    db = AsyncMock()
+
+    with patch(
+        "services.risk_service.get_or_create_settings",
+        new_callable=AsyncMock,
+        return_value=_make_risk_settings(trading_blocked=True),
+    ):
+        result = await check_order(user, "005930", "SELL", 1, 50_000, db)
+
+    assert result is None
 
 
 async def test_get_risk_settings_returns_200(client):

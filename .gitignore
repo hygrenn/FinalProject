@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ML model weights (train locally, upload via API)
+backend/ml/weights/*.pth

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_client import get_redis
@@ -149,14 +149,52 @@ async def get_signal(code: str, db: AsyncSession | None = None) -> dict:
     return result
 
 
-async def get_prediction(code: str) -> dict:
-    """LSTM 5일 예측 (캐시 포함)."""
+async def get_prediction(code: str, db: AsyncSession | None = None) -> dict:
+    """LSTM 5일 예측.
+    우선순위: DB 저장 예측 → 로컬 추론(가중치 있을 때) → 빈 값
+    """
     redis = await get_redis()
     cache_key = f"ai_predict:{code}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
 
+    # 1. DB에서 최근 저장된 예측 조회. 저장값만으로 응답해 외부 시세 장애와 무관하게 동작한다.
+    if db is not None:
+        res = await db.execute(
+            select(AISignalHistory)
+            .where(
+                AISignalHistory.stock_code == code,
+                AISignalHistory.predicted_prices.isnot(None),
+            )
+            .order_by(AISignalHistory.recorded_at.desc())
+            .limit(1)
+        )
+        row = res.scalar_one_or_none()
+        if row and row.predicted_prices:
+            p = row.predicted_prices
+            recorded_at = row.recorded_at
+            if recorded_at.tzinfo is None:
+                recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+            result = {
+                "code": code,
+                "current_price": int(p.get("current_price", 0)),
+                "prediction": {
+                    "bullish": p.get("bullish", []),
+                    "base": p.get("base", []),
+                    "bearish": p.get("bearish", []),
+                },
+                "lstm_available": True,
+                "predicted_at": row.recorded_at.isoformat(),
+                "confidence": float(row.confidence or p.get("confidence", 0)),
+                "source": "stored",
+                "stale": datetime.now(timezone.utc) - recorded_at > timedelta(days=3),
+            }
+            ttl = 300 if _is_market_open() else 86400
+            await redis.setex(cache_key, ttl, json.dumps(result))
+            return result
+
+    # 2. DB에 없으면 로컬 추론 시도 (가중치 있을 때만)
     raw = await get_ohlcv_cached(code, "1y", "day")
     df = _ohlcv_to_df(raw)
     scenarios = None
@@ -169,6 +207,10 @@ async def get_prediction(code: str) -> dict:
         "current_price": current,
         "prediction": scenarios or {"bullish": [], "base": [], "bearish": []},
         "lstm_available": scenarios is not None,
+        "predicted_at": None,
+        "confidence": None,
+        "source": "local" if scenarios is not None else "unavailable",
+        "stale": False,
     }
     ttl = 300 if _is_market_open() else 86400
     await redis.setex(cache_key, ttl, json.dumps(result))

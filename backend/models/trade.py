@@ -19,6 +19,8 @@ class Trade(Base):
     order_price = Column(Numeric(12, 2))
     executed_price = Column(Numeric(12, 2))
     commission = Column(Numeric(10, 2), server_default="0")
+    realized_pnl = Column(Integer, nullable=True)
+    filled_quantity = Column(Integer, nullable=False, default=0, server_default="0")
     status = Column(String(20), nullable=False, server_default="PENDING")
     mode = Column(String(20), nullable=False)
     kis_order_no = Column(String(50))
