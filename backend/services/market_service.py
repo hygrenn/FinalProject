@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -35,11 +36,12 @@ async def get_ohlcv_from_pykrx(code: str, period: str, interval: str) -> list[di
     end = datetime.now(_KST)
     start = end - timedelta(days=period_days.get(period, 30))
     try:
-        df = pykrx_stock.get_market_ohlcv_by_date(
+        df = await asyncio.to_thread(
+            pykrx_stock.get_market_ohlcv_by_date,
             start.strftime("%Y%m%d"),
             end.strftime("%Y%m%d"),
             code,
-            freq=freq_map.get(interval, "d"),
+            freq_map.get(interval, "d"),
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"시세 데이터 조회 실패: {exc}") from exc
@@ -82,14 +84,22 @@ async def get_stock_current_price(code: str) -> dict:
     if cached:
         return json.loads(cached)
 
-    date_str = _last_trading_day()
+    day = datetime.now(_KST)
+    df = None
     try:
-        df = pykrx_stock.get_market_ohlcv_by_date(date_str, date_str, code)
+        for _ in range(10):
+            date_str = day.strftime("%Y%m%d")
+            df = await asyncio.to_thread(
+                pykrx_stock.get_market_ohlcv_by_date, date_str, date_str, code
+            )
+            if df is not None and not df.empty:
+                break
+            day -= timedelta(days=1)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"현재가 조회 실패: {exc}") from exc
 
     if df is None or df.empty:
-        return {"code": code}
+        raise HTTPException(status_code=502, detail="최근 거래일 현재가를 찾을 수 없습니다.")
 
     row = df.iloc[-1]
     data = {
@@ -131,7 +141,7 @@ async def _get_ticker_list(market: str) -> list[dict]:
         return json.loads(cached)
 
     market_str = "KOSPI" if market.lower() == "kospi" else "KOSDAQ"
-    tickers = _build_ticker_cache(market_str)
+    tickers = await asyncio.to_thread(_build_ticker_cache, market_str)
     await redis.setex(cache_key, 86400, json.dumps(tickers))
     return tickers
 
@@ -169,7 +179,9 @@ async def get_indices() -> list[dict]:
     result = []
     for name, code in [("KOSPI", "1"), ("KOSDAQ", "2")]:
         try:
-            df = pykrx_stock.get_index_ohlcv_by_date(date_str, date_str, code)
+            df = await asyncio.to_thread(
+                pykrx_stock.get_index_ohlcv_by_date, date_str, date_str, code
+            )
             if df is not None and not df.empty:
                 row = df.iloc[-1]
                 result.append({

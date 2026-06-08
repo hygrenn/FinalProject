@@ -53,10 +53,16 @@ def send_fill_notification(self, user_id: str, trade_id: str) -> None:
     async def _fetch_trade():
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Trade).where(Trade.id == uuid.UUID(trade_id)))
-            return result.scalar_one_or_none()
+            trade = result.scalar_one_or_none()
+            alert_result = await db.execute(
+                select(AlertSettings).where(AlertSettings.user_id == uuid.UUID(user_id))
+            )
+            return trade, alert_result.scalar_one_or_none()
 
-    trade = asyncio.run(_fetch_trade())
+    trade, alert_settings = asyncio.run(_fetch_trade())
     if not trade:
+        return
+    if alert_settings and not alert_settings.trade_filled:
         return
 
     to_email = _get_notification_email(user_id)
@@ -67,7 +73,7 @@ def send_fill_notification(self, user_id: str, trade_id: str) -> None:
     subject = f"[StockSenseAI] {trade.stock_code} {order_type_kr} 체결 완료"
     body = (
         f"<p>{trade.stock_code} {trade.stock_name or ''} {order_type_kr} 체결되었습니다.</p>"
-        f"<p>체결가: {trade.executed_price:,}원 | 수량: {trade.quantity}주</p>"
+        f"<p>체결가: {trade.executed_price:,}원 | 수량: {trade.filled_quantity}주</p>"
     )
 
     try:

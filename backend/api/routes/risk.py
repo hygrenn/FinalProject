@@ -54,3 +54,17 @@ async def update_risk_settings(
         settings.enforce_hard_stop = body.enforce_hard_stop
     await db.commit()
     return {"updated": True}
+
+
+@router.post("/unblock")
+@limiter.limit("5/minute")
+async def unblock_trading(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    settings = await get_or_create_settings(user.id, db)
+    settings.trading_blocked = False
+    settings.blocked_at = None
+    await db.commit()
+    return {"unblocked": True}

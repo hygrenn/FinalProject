@@ -3,7 +3,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Literal
 
@@ -57,14 +57,24 @@ async def place_order(
                 Portfolio.user_id == user.id,
                 Portfolio.stock_code == body.stock_code,
                 Portfolio.mode == user.mode,
-            )
+            ).with_for_update()
         )
         holding = result.scalar_one_or_none()
-        available = holding.quantity if holding else 0
+        pending_result = await db.execute(
+            select(func.coalesce(func.sum(Trade.quantity - Trade.filled_quantity), 0)).where(
+                Trade.user_id == user.id,
+                Trade.stock_code == body.stock_code,
+                Trade.mode == user.mode,
+                Trade.order_type == "SELL",
+                Trade.status.in_(["PENDING", "PARTIALLY_FILLED"]),
+            )
+        )
+        pending_quantity = pending_result.scalar_one()
+        available = (holding.quantity if holding else 0) - pending_quantity
         if available < body.quantity:
             raise HTTPException(
                 status_code=400,
-                detail=f"보유 수량 부족: {available}주 보유, {body.quantity}주 매도 요청",
+                detail=f"매도 가능 수량 부족: {available}주 가능, {body.quantity}주 매도 요청",
             )
 
     # 시장가 주문은 현재가로 리스크 계산 (price=0이면 체크 우회되므로)
@@ -81,7 +91,9 @@ async def place_order(
                 detail="시장가 주문의 현재가를 조회할 수 없습니다. 잠시 후 다시 시도하세요.",
             )
 
-    warning = await risk_service.check_order(user, body.stock_code, body.quantity, risk_price, db)
+    warning = await risk_service.check_order(
+        user, body.stock_code, body.order_type, body.quantity, risk_price, db
+    )
 
     result = await kis_service.place_order(
         user, body.stock_code, body.order_type, body.price_type, body.quantity, body.price
