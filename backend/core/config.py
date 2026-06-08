@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     SYSTEM_KIS_APP_SECRET: str = ""
     SYSTEM_KIS_MODE: str = "paper"
     EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES: int = 30
+    ML_UPLOAD_KEY: str = ""  # 로컬 예측 업로드용 시크릿 키 (.env에서 설정)
 
     @field_validator("ENCRYPTION_KEY")
     @classmethod

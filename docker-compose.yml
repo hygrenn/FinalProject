@@ -21,15 +21,35 @@ services:
     ports:
       - "6379:6379"
 
+  migrate:
+    build: ./backend
+    command: alembic upgrade head
+    working_dir: /project
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_DB:-stocksense}
+    volumes:
+      - ./alembic.ini:/project/alembic.ini:ro
+      - ./db:/project/db:ro
+      - ./backend:/project/backend:ro
+
   backend:
     build: ./backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_started
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_DB:-stocksense}
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
@@ -39,11 +59,53 @@ services:
     build: ./backend
     command: celery -A tasks worker --loglevel=info
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_started
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_DB:-stocksense}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+
+  celery-beat:
+    build: ./backend
+    command: celery -A tasks beat --loglevel=info
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_DB:-stocksense}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8000}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
 
 volumes:
   pgdata:
+  frontend_node_modules:

@@ -1,4 +1,5 @@
 import json
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -64,6 +65,68 @@ async def test_predict_returns_200(client):
     data = resp.json()
     assert "prediction" in data
     assert "lstm_available" in data
+
+
+async def test_prediction_upload_rejects_invalid_key(client):
+    with patch("api.routes.ai.settings.ML_UPLOAD_KEY", "correct-key"):
+        resp = await client.post(
+            "/ai/predictions/upload",
+            headers={"X-Upload-Key": "wrong-key"},
+            json={
+                "predictions": [{
+                    "code": "005930",
+                    "current_price": 73000,
+                    "bullish": [74000, 75000, 76000, 77000, 78000],
+                    "base": [73500, 74000, 74500, 75000, 75500],
+                    "bearish": [72000, 71500, 71000, 70500, 70000],
+                    "confidence": 80,
+                }]
+            },
+        )
+    assert resp.status_code == 403
+
+
+async def test_prediction_upload_validates_five_day_scenarios(client):
+    with patch("api.routes.ai.settings.ML_UPLOAD_KEY", "correct-key"):
+        resp = await client.post(
+            "/ai/predictions/upload",
+            headers={"X-Upload-Key": "correct-key"},
+            json={
+                "predictions": [{
+                    "code": "005930",
+                    "current_price": 73000,
+                    "bullish": [74000],
+                    "base": [73500],
+                    "bearish": [72000],
+                    "confidence": 80,
+                }]
+            },
+        )
+    assert resp.status_code == 422
+
+
+async def test_prediction_upload_stores_rows_and_clears_cache(client):
+    mock_redis = AsyncMock()
+    payload = {
+        "predictions": [{
+            "code": "005930",
+            "current_price": 73000,
+            "bullish": [74000, 75000, 76000, 77000, 78000],
+            "base": [73500, 74000, 74500, 75000, 75500],
+            "bearish": [72000, 71500, 71000, 70500, 70000],
+            "confidence": 80,
+        }]
+    }
+    with patch("api.routes.ai.settings.ML_UPLOAD_KEY", "correct-key"), \
+         patch("api.routes.ai.get_redis", return_value=mock_redis):
+        resp = await client.post(
+            "/ai/predictions/upload",
+            headers={"X-Upload-Key": "correct-key"},
+            json=payload,
+        )
+    assert resp.status_code == 200
+    assert resp.json()["uploaded"] == 1
+    mock_redis.delete.assert_awaited_once_with("ai_predict:005930")
 
 
 async def test_indicators_returns_200(client):

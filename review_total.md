@@ -4,6 +4,38 @@
 대상: `dev` 브랜치 (`8f8dd6b`)  
 중점: 계획 이행률보다 프로그램 오류, 데이터 무결성, 통합 실패, 운영 위험
 
+## 2026-06-08 hwang 브랜치 백엔드 수정 결과
+
+아래 백엔드 문제를 수정하고 Docker 통합 환경에서 검증했다.
+
+- P1-1: 리스크 차단 및 종목 한도 검사를 BUY에만 적용해 SELL 청산 허용
+- P1-2: 체결 폴링이 주문 당시 `Trade.mode`를 사용하도록 변경
+- P1-3/P2-9: `filled_quantity` 컬럼 및 migration 추가, 누적 체결 증가분만 장부 반영, Trade row lock으로 중복 반영 방지
+- P1-6: 런타임/개발/ML 의존성 분리, pytest 충돌 수정, `pandas-ta-classic` 전환, PyTorch 기본 이미지 제외
+- P2-8: Portfolio row lock과 미체결 매도수량 차감으로 동시 초과 매도 방지
+- P2-11/P2-12: 최근 실제 거래일 가격 역방향 탐색 및 pykrx 호출 `asyncio.to_thread()` 이동
+- P2-14: KIS 서비스 구현 복구 및 체결/잔고 응답 `rt_cd` 오류 검사
+- P2-15: FastAPI 프로세스별 APScheduler 제거, 단일 Celery Beat 서비스 추가
+- P2-16: `trade_filled` 알림 설정 확인 후 체결 이메일 발송
+- merge 회귀: KIS 주문/잔고 구현, 주요 백엔드 라우터 7개, ORM의 `realized_pnl`/`enforce_hard_stop`/`notification_email` 복구
+- 리스크 수동 차단 해제 API `POST /risk/unblock` 추가
+
+검증:
+
+- `docker compose build backend frontend`: 성공
+- `docker compose up -d`: PostgreSQL, Redis, migration, backend, Celery worker/beat, frontend 정상 기동
+- Alembic: 단일 head `c9d0e1f2a3b4`, 신규 DB 전체 migration 성공
+- 백엔드 Docker 기본 테스트: `124 passed, 1 skipped`
+- 거래/리스크 회귀 테스트: `14 passed`
+- `/health`, frontend HTTP, 복구된 주요 API OpenAPI 노출 확인
+
+아직 남은 백엔드 항목:
+
+- P2-7: 일일 기준 평가액 snapshot과 미실현 손익을 포함한 손실률 계산
+- P2-10: `/simulate/download` 인증 SSE를 fetch streaming 또는 단기 토큰 방식으로 변경
+- P3-19: 백테스트 최대 2년 제한 및 장시간 작업 Celery job 전환
+- P3-20: 모델 artifact 배포/버전/검증 절차 정의
+
 ## 결론
 
 백엔드는 Phase 1~4의 주요 API와 모델이 상당 부분 구현되어 있고, Alembic 마이그레이션도 단일 head로 연결되어 있다. 프론트 단위 테스트도 모두 통과한다.
