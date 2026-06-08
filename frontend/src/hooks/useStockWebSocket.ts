@@ -11,8 +11,9 @@ export function useStockWebSocket(stockCode: string): { isConnected: boolean } {
     if (!stockCode) return
 
     if (!API_BASE || typeof EventSource === 'undefined') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsConnected(true)
       const timer = setInterval(() => {
-        setIsConnected(true)
         const mockPrice = 70000 + Math.round(Math.random() * 10000)
         updateRealtimePrice({ code: stockCode, price: mockPrice, change_pct: +(Math.random() * 4 - 2).toFixed(2) })
       }, 3000)

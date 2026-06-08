@@ -57,7 +57,7 @@ export function SimulatorTab() {
           <Input type="date" value={sellDate} onChange={(e) => setSellDate(e.target.value)} className="mt-1" />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">투자금액 (원)</label>
+          <label className="text-xs text-muted-foreground">투자금액</label>
           <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1" />
         </div>
         {error && <div className="text-xs text-red-400">{error}</div>}

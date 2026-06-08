@@ -7,6 +7,28 @@ import { SignalCard } from './SignalCard'
 import { ScoreBreakdown } from './ScoreBreakdown'
 import { MultiframePanel } from './MultiframePanel'
 
+// 백엔드 /ai/{code}/signal 응답 — signal_breakdown으로 점수를 감싸서 반환한다.
+interface SignalResponse {
+  signal: AISignal['signal']
+  signal_score: number
+  signal_breakdown?: {
+    technical_score: number
+    lstm_score: number
+  }
+  lstm_available?: boolean
+}
+
+// 백엔드 /ai/{code}/multiframe 응답 — timeframes 객체(daily/weekly/monthly).
+interface MultiframeResponse {
+  timeframes?: Record<string, { signal: MultiframeSignal['signal']; score: number }>
+}
+
+const TF_LABELS: [string, MultiframeSignal['timeframe']][] = [
+  ['daily', '1D'],
+  ['weekly', '1W'],
+  ['monthly', '1M'],
+]
+
 export function AITab() {
   const selectedStock = useStockStore((s) => s.selectedStock)
   const [signal, setSignal] = useState<AISignal>(MOCK_AI_SIGNAL)
@@ -20,11 +42,32 @@ export function AITab() {
       setLoading(true)
       try {
         const [sigRes, mfRes] = await Promise.all([
-          api.get(`/ai/${code}/signal`),
-          api.get(`/ai/${code}/multiframe`),
+          api.get<SignalResponse>(`/ai/${code}/signal`),
+          api.get<MultiframeResponse>(`/ai/${code}/multiframe`),
         ])
-        if (sigRes.data) setSignal(sigRes.data)
-        if (mfRes.data?.signals) setMultiframe(mfRes.data.signals)
+
+        const sd = sigRes.data
+        if (sd?.signal) {
+          setSignal((prev) => ({
+            ...prev,
+            signal: sd.signal,
+            signal_score: sd.signal_score,
+            tech_score: sd.signal_breakdown?.technical_score ?? sd.signal_score,
+            lstm_score: sd.signal_breakdown?.lstm_score ?? 50,
+            // 백엔드는 별도 confidence를 주지 않으므로 중립(50)에서의 거리로 산출한다.
+            confidence: Math.min(1, Math.abs(sd.signal_score - 50) / 50),
+          }))
+        }
+
+        const tf = mfRes.data?.timeframes
+        if (tf) {
+          const frames = TF_LABELS.filter(([key]) => tf[key]).map(([key, label]) => ({
+            timeframe: label,
+            signal: tf[key].signal,
+            score: tf[key].score,
+          }))
+          if (frames.length > 0) setMultiframe(frames)
+        }
       } catch {
         // keep mock data on error
       } finally {
