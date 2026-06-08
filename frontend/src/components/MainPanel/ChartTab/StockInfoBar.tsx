@@ -6,7 +6,7 @@ import { OrderModal } from '@/components/Trade/OrderModal'
 
 interface StockInfoBarProps {
   stock: Stock
-  detail: StockDetail
+  detail: StockDetail | null
   isLive: boolean
   realtimePrice?: number | null
   realtimeChangePct?: number | null
@@ -43,15 +43,15 @@ export function StockInfoBar({ stock, detail, isLive, realtimePrice, realtimeCha
 
       <div className="grid grid-cols-4 gap-2">
         {[
-          { label: '시가', value: detail.open, color: 'text-foreground' },
-          { label: '고가', value: detail.high, color: 'text-green-500' },
-          { label: '저가', value: detail.low, color: 'text-red-500' },
-          { label: '거래량', value: detail.volume, color: 'text-foreground', isVolume: true },
+          { label: '시가', value: detail?.open, color: 'text-foreground' },
+          { label: '고가', value: detail?.high, color: 'text-green-500' },
+          { label: '저가', value: detail?.low, color: 'text-red-500' },
+          { label: '거래량', value: detail?.volume, color: 'text-foreground', isVolume: true },
         ].map(({ label, value, color, isVolume }) => (
           <div key={label} className="bg-background rounded px-2 py-1 text-center">
             <div className="text-muted-foreground text-xs mb-0.5">{label}</div>
             <div className={cn('text-xs font-semibold', color)}>
-              {isVolume ? `${(value / 1000000).toFixed(1)}M` : value.toLocaleString()}
+              {value == null ? '-' : isVolume ? `${(value / 1000000).toFixed(1)}M` : value.toLocaleString()}
             </div>
           </div>
         ))}
