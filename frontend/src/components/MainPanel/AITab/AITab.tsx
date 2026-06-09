@@ -6,6 +6,8 @@ import api from '@/lib/api'
 import { SignalCard } from './SignalCard'
 import { ScoreBreakdown } from './ScoreBreakdown'
 import { MultiframePanel } from './MultiframePanel'
+import { FundamentalPanel } from '@/components/Analysis/FundamentalPanel'
+import { RecommendationPanel } from '@/components/Analysis/RecommendationPanel'
 
 // 백엔드 /ai/{code}/signal 응답 — signal_breakdown으로 점수를 감싸서 반환한다.
 interface SignalResponse {
@@ -83,26 +85,35 @@ export function AITab() {
   const { signal: sig, signal_score, tech_score, lstm_score, confidence } = signal
 
   return (
-    <div className="h-full overflow-y-auto p-4 space-y-4">
-      {loading && (
-        <div className="text-xs text-muted-foreground text-center py-2">AI 분석 중...</div>
-      )}
-      {fetchError && (
-        <div className="text-xs text-red-400 text-center py-2 border border-red-400/30 rounded px-3">
-          API 오류: {fetchError}
+    <div className="h-full overflow-y-auto p-4">
+      {/* 좌: 기존 AI 점수 / 우: 재무 평가 + 추천 종목 (실데이터) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          {loading && (
+            <div className="text-xs text-muted-foreground text-center py-2">AI 분석 중...</div>
+          )}
+          {fetchError && (
+            <div className="text-xs text-red-400 text-center py-2 border border-red-400/30 rounded px-3">
+              API 오류: {fetchError}
+            </div>
+          )}
+          <SignalCard
+            signal={sig}
+            signal_score={signal_score}
+            confidence={confidence}
+          />
+          <ScoreBreakdown
+            tech_score={tech_score}
+            lstm_score={lstm_score}
+            confidence={confidence}
+          />
+          <MultiframePanel signals={multiframe} />
         </div>
-      )}
-      <SignalCard
-        signal={sig}
-        signal_score={signal_score}
-        confidence={confidence}
-      />
-      <ScoreBreakdown
-        tech_score={tech_score}
-        lstm_score={lstm_score}
-        confidence={confidence}
-      />
-      <MultiframePanel signals={multiframe} />
+        <div className="space-y-4">
+          <FundamentalPanel />
+          <RecommendationPanel />
+        </div>
+      </div>
     </div>
   )
 }
