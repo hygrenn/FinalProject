@@ -71,16 +71,16 @@ export function SimulatorTab() {
           <div className="text-sm font-semibold">{result.name} 시뮬레이션 결과</div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">매수가</span>
-            <span className="font-medium">{result.buy_price.toLocaleString()}원</span>
+            <span className="font-medium">{result.buy_price.toLocaleString('ko-KR')}원</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">매도가</span>
-            <span className="font-medium">{result.sell_price.toLocaleString()}원</span>
+            <span className="font-medium">{result.sell_price.toLocaleString('ko-KR')}원</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">수익/손실</span>
             <span className={cn('font-medium', result.profit_krw >= 0 ? 'text-green-400' : 'text-red-400')}>
-              {result.profit_krw >= 0 ? '+' : ''}{result.profit_krw.toLocaleString()}원
+              {result.profit_krw >= 0 ? '+' : ''}{result.profit_krw.toLocaleString('ko-KR')}원
             </span>
           </div>
           <div className="flex justify-between text-sm">

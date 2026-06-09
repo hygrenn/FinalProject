@@ -243,11 +243,33 @@ async def get_multiframe(code: str) -> dict:
     if cached:
         return json.loads(cached)
 
+    # 일봉 2년치를 가져온 뒤 resample로 주봉/월봉을 파생한다.
+    # pykrx 는 'w'(주봉) 미지원, 'm'(월봉)도 불안정하므로 일봉 기반으로 처리한다.
     frames: dict[str, dict] = {}
-    for interval, label in [("day", "daily"), ("week", "weekly"), ("month", "monthly")]:
-        raw = await get_ohlcv_cached(code, "1y", interval)
-        df = _ohlcv_to_df(raw)
-        if df.empty or len(df) < 30:
+    try:
+        raw_daily = await get_ohlcv_cached(code, "3y", "day")
+    except Exception:
+        raw_daily = []
+
+    daily_df = _ohlcv_to_df(raw_daily)
+
+    resample_cfg: list[tuple[str, str, int]] = [
+        ("daily",   "",   30),
+        ("weekly",  "W",  20),
+        ("monthly", "ME", 12),
+    ]
+    for label, rule, min_rows in resample_cfg:
+        if daily_df.empty:
+            continue
+        if rule:
+            df = (
+                daily_df.resample(rule)
+                .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+                .dropna()
+            )
+        else:
+            df = daily_df.copy()
+        if len(df) < min_rows:
             continue
         feat = build_features(df)
         if feat.empty:

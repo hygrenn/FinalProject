@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 from fastapi import HTTPException
 from pykrx import stock as pykrx_stock
 
@@ -31,8 +32,9 @@ def _last_trading_day() -> str:
 
 
 async def get_ohlcv_from_pykrx(code: str, period: str, interval: str) -> list[dict]:
-    period_days = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "1y": 365, "2y": 730}
-    freq_map = {"day": "d", "week": "w", "month": "m"}
+    period_days = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "1y": 365, "2y": 730, "3y": 1095}
+    # pykrx는 d/m만 지원. week는 일봉 fetch 후 resample.
+    pykrx_freq = "m" if interval == "month" else "d"
 
     end = datetime.now(_KST)
     start = end - timedelta(days=period_days.get(period, 30))
@@ -42,13 +44,34 @@ async def get_ohlcv_from_pykrx(code: str, period: str, interval: str) -> list[di
             start.strftime("%Y%m%d"),
             end.strftime("%Y%m%d"),
             code,
-            freq_map.get(interval, "d"),
+            pykrx_freq,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"시세 데이터 조회 실패: {exc}") from exc
 
     if df is None or df.empty:
         return []
+
+    df.index = pd.to_datetime(df.index)
+
+    if interval == "week":
+        df = df.rename(columns={"시가": "open", "고가": "high", "저가": "low", "종가": "close", "거래량": "volume"})
+        df = (
+            df.resample("W")
+            .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+            .dropna(subset=["close"])
+        )
+        return [
+            {
+                "date": date.strftime("%Y%m%d"),
+                "open": int(row["open"]),
+                "high": int(row["high"]),
+                "low": int(row["low"]),
+                "close": int(row["close"]),
+                "volume": int(row["volume"]),
+            }
+            for date, row in df.iterrows()
+        ]
 
     return [
         {

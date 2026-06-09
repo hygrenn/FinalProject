@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     SYSTEM_KIS_APP_KEY: str = ""
     SYSTEM_KIS_APP_SECRET: str = ""
     SYSTEM_KIS_MODE: str = "paper"
+    SYSTEM_KIS_ACCOUNT_NO: str = ""  # 형식: 12345678-01
     EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES: int = 30
     ML_UPLOAD_KEY: str = ""  # 로컬 예측 업로드용 시크릿 키 (.env에서 설정)
 

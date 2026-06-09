@@ -8,7 +8,7 @@ export function Sidebar() {
   const watchlistStocks = stockList.filter((s) => watchlist.includes(s.code))
 
   return (
-    <aside className="w-52 shrink-0 bg-card border-r border-border overflow-y-auto">
+    <aside className="w-52 flex-1 min-h-0 shrink-0 bg-card border-r border-border overflow-y-auto">
       <StockGroup name="관심종목">
         <StockList stocks={watchlistStocks} />
       </StockGroup>

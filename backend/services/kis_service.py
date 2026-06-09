@@ -10,7 +10,7 @@ from fastapi import HTTPException
 _logger = logging.getLogger(__name__)
 _KST = timezone(timedelta(hours=9))
 
-from core.security import decrypt_aes
+from core.config import settings
 from services.kis_token_service import get_access_token
 
 _REAL_URL = "https://openapi.koreainvestment.com:9443"
@@ -33,33 +33,29 @@ def _tr_id(action: str, mode: str) -> str:
     return _TR_IDS[action][mode]
 
 
-def _get_keys(user, mode: str | None = None) -> tuple[str, str, str]:
-    """지정한 mode에 따라 (app_key, app_secret, account_no) 복호화 반환.
-    account_no는 하이픈 제거 후 반환 (예: '12345678-01' → '1234567801').
-    """
-    mode = mode or user.mode
-    if mode == "paper":
-        if not user.kis_paper_key_enc:
-            raise HTTPException(status_code=400, detail="모의투자 KIS 키가 등록되지 않았습니다.")
-        return (
-            decrypt_aes(user.kis_paper_key_enc),
-            decrypt_aes(user.kis_paper_secret_enc),
-            (user.kis_paper_account_no or "").replace("-", ""),
-        )
-    else:
-        if not user.kis_real_key_enc:
-            raise HTTPException(status_code=400, detail="실거래 KIS 키가 등록되지 않았습니다.")
-        return (
-            decrypt_aes(user.kis_real_key_enc),
-            decrypt_aes(user.kis_real_secret_enc),
-            (user.kis_real_account_no or "").replace("-", ""),
-        )
+def _get_keys(user=None, mode: str | None = None) -> tuple[str, str, str]:
+    """.env SYSTEM_KIS 키 반환. (app_key, app_secret, account_no 하이픈 제거)"""
+    app_key = settings.SYSTEM_KIS_APP_KEY
+    app_secret = settings.SYSTEM_KIS_APP_SECRET
+    account_no = settings.SYSTEM_KIS_ACCOUNT_NO.replace("-", "")
+
+    if not app_key or not app_secret:
+        raise HTTPException(status_code=503, detail="KIS API 키가 서버에 설정되지 않았습니다 (.env SYSTEM_KIS_APP_KEY)")
+    if not account_no:
+        raise HTTPException(status_code=503, detail="계좌번호가 서버에 설정되지 않았습니다 (.env SYSTEM_KIS_ACCOUNT_NO)")
+
+    return app_key, app_secret, account_no
 
 
-async def _headers(user, mode: str | None = None) -> dict:
-    mode = mode or user.mode
+def _effective_mode(user=None, mode: str | None = None) -> str:
+    """실제 사용할 KIS 모드 결정. 항상 .env SYSTEM_KIS_MODE 우선."""
+    return settings.SYSTEM_KIS_MODE
+
+
+async def _headers(user=None, mode: str | None = None) -> dict:
     app_key, app_secret, _ = _get_keys(user, mode)
-    token = await get_access_token(app_key, app_secret, mode)
+    effective_mode = _effective_mode(user, mode)
+    token = await get_access_token(app_key, app_secret, effective_mode)
     return {
         "authorization": f"Bearer {token}",
         "appkey": app_key,
@@ -84,11 +80,12 @@ async def place_order(
     반환: {kis_order_no}
     """
     _, _, account_no = _get_keys(user)
+    mode = _effective_mode(user)
     action = "buy" if order_type == "BUY" else "sell"
     ord_dvsn = "01" if price_type == "MARKET" else "00"
 
     headers = await _headers(user)
-    headers["tr_id"] = _tr_id(action, user.mode)
+    headers["tr_id"] = _tr_id(action, mode)
 
     body = {
         "CANO": account_no[:8],
@@ -102,7 +99,7 @@ async def place_order(
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
-                f"{_base_url(user.mode)}/uapi/domestic-stock/v1/trading/order-cash",
+                f"{_base_url(mode)}/uapi/domestic-stock/v1/trading/order-cash",
                 json=body,
                 headers=headers,
             )
@@ -122,8 +119,9 @@ async def place_order(
 async def cancel_order(user, kis_order_no: str) -> dict:
     """미체결 주문 취소."""
     _, _, account_no = _get_keys(user)
+    mode = _effective_mode(user)
     headers = await _headers(user)
-    headers["tr_id"] = _tr_id("cancel", user.mode)
+    headers["tr_id"] = _tr_id("cancel", mode)
 
     body = {
         "CANO": account_no[:8],
@@ -140,7 +138,7 @@ async def cancel_order(user, kis_order_no: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
-                f"{_base_url(user.mode)}/uapi/domestic-stock/v1/trading/order-rvsecncl",
+                f"{_base_url(mode)}/uapi/domestic-stock/v1/trading/order-rvsecncl",
                 json=body,
                 headers=headers,
             )
@@ -160,7 +158,7 @@ async def poll_fill(user, kis_order_no: str, mode: str | None = None) -> dict | 
     체결 확인.
     반환: {executed_price, filled_qty, filled_at} or None (미체결)
     """
-    mode = mode or user.mode
+    mode = _effective_mode(user, mode)
     _, _, account_no = _get_keys(user, mode)
     headers = await _headers(user, mode)
     headers["tr_id"] = _tr_id("fill", mode)
@@ -226,8 +224,9 @@ def _parse_ord_tmd(ord_tmd: str) -> datetime | None:
 async def get_balance(user) -> dict:
     """예수금 조회."""
     _, _, account_no = _get_keys(user)
+    mode = _effective_mode(user)
     headers = await _headers(user)
-    headers["tr_id"] = _tr_id("balance", user.mode)
+    headers["tr_id"] = _tr_id("balance", mode)
 
     params = {
         "CANO": account_no[:8],
@@ -246,7 +245,7 @@ async def get_balance(user) -> dict:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                f"{_base_url(user.mode)}/uapi/domestic-stock/v1/trading/inquire-balance",
+                f"{_base_url(mode)}/uapi/domestic-stock/v1/trading/inquire-balance",
                 params=params,
                 headers=headers,
             )
@@ -266,8 +265,9 @@ async def get_balance(user) -> dict:
 async def get_balance_full(user) -> dict:
     """보유종목 리스트 + 예수금 전체 조회 (실거래 모드 포트폴리오용)."""
     _, _, account_no = _get_keys(user)
+    mode = _effective_mode(user)
     headers = await _headers(user)
-    headers["tr_id"] = _tr_id("balance", user.mode)
+    headers["tr_id"] = _tr_id("balance", mode)
 
     params = {
         "CANO": account_no[:8],
@@ -286,7 +286,7 @@ async def get_balance_full(user) -> dict:
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
-                f"{_base_url(user.mode)}/uapi/domestic-stock/v1/trading/inquire-balance",
+                f"{_base_url(mode)}/uapi/domestic-stock/v1/trading/inquire-balance",
                 params=params,
                 headers=headers,
             )

@@ -214,13 +214,17 @@ async def test_get_intraday_ohlcv_rejects_invalid_interval():
 # ─── Task 3: Chart + Orderbook/Trades Routes ─────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_chart_intraday_returns_empty_without_system_key(client):
-    """분봉 요청 시 system KIS 키가 없으면 빈 data를 반환한다 (200)."""
-    with patch("services.kis_market_service.settings") as mock_settings:
+async def test_chart_intraday_returns_fallback_while_loading(client):
+    """KIS 키가 없으면 일봉 fallback만 반환하고 재시도를 요구하지 않는다."""
+    fallback = [{"date": "20260609", "open": 1, "high": 2, "low": 1, "close": 2, "volume": 10}]
+    with patch("api.routes.stocks.settings") as mock_settings, \
+         patch("api.routes.stocks.market_service.get_ohlcv_cached", return_value=fallback):
         mock_settings.SYSTEM_KIS_APP_KEY = ""
         response = await client.get("/stocks/005930/chart?period=1d&interval=1min")
     assert response.status_code == 200
-    assert response.json()["data"] == []
+    assert response.json()["status"] == "fallback_only"
+    assert response.json()["actual_interval"] == "day"
+    assert response.json()["data"] == fallback
 
 
 @pytest.mark.asyncio

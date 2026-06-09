@@ -106,7 +106,8 @@ async def test_portfolio_real_mode_uses_kis(client):
         "cash": 1000000,
     }
 
-    with patch("api.routes.portfolio.kis_service.get_balance_full",
+    with patch("api.routes.portfolio.settings.SYSTEM_KIS_MODE", "real"), \
+         patch("api.routes.portfolio.kis_service.get_balance_full",
                new_callable=AsyncMock, return_value=mock_kis_data):
         resp = await client.get("/portfolio")
 

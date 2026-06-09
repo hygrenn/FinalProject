@@ -34,18 +34,32 @@ def _mock_db():
     return session
 
 
-async def test_order_demo_mode_blocked(client):
-    """demo 모드 유저는 주문 불가."""
+async def test_order_uses_system_kis_mode(client):
+    """주문 기록과 체결 폴링은 실제 시스템 KIS 모드를 사용한다."""
     user = _mock_user(mode="demo")
+    db = _mock_db()
     app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_db] = lambda: db
     try:
-        resp = await client.post("/trades/order", json={
-            "stock_code": "005930", "order_type": "BUY",
-            "price_type": "LIMIT", "quantity": 1, "price": 70000
-        })
+        with patch("api.routes.trades.settings.SYSTEM_KIS_MODE", "real"), \
+             patch("api.routes.trades.risk_service.check_order", new_callable=AsyncMock, return_value=None), \
+             patch("api.routes.trades.kis_service.place_order",
+                   new_callable=AsyncMock, return_value={"kis_order_no": "0000123456"}), \
+             patch("api.routes.trades.poll_order_fill") as mock_task:
+            mock_task.delay = MagicMock()
+            resp = await client.post("/trades/order", json={
+                "stock_code": "005930", "order_type": "BUY",
+                "price_type": "LIMIT", "quantity": 1, "price": 70000
+            })
     finally:
         app.dependency_overrides.pop(get_current_user, None)
-    assert resp.status_code == 403
+        app.dependency_overrides.pop(get_db, None)
+    assert resp.status_code == 200
+    trade = db.add.call_args.args[0]
+    assert trade.mode == "real"
+    mock_task.delay.assert_called_once_with(
+        str(trade.id), str(user.id), "0000123456", "real"
+    )
 
 
 async def test_order_returns_pending(client):

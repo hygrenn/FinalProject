@@ -90,7 +90,13 @@ async def _get_today_loss(user_id, mode: str, db: AsyncSession) -> int:
 
 
 async def check_order(
-    user, stock_code: str, order_type: str, quantity: int, price: int, db: AsyncSession
+    user,
+    stock_code: str,
+    order_type: str,
+    quantity: int,
+    price: int,
+    db: AsyncSession,
+    mode: str | None = None,
 ) -> str | None:
     """
     주문 전 리스크 체크.
@@ -102,7 +108,7 @@ async def check_order(
         return None
     if settings.trading_blocked:
         raise HTTPException(status_code=400, detail="거래가 차단된 상태입니다. 리스크 설정에서 확인하세요.")
-    mode = user.mode
+    mode = mode or user.mode
 
     portfolio_total = await _get_portfolio_total(user.id, mode, db)
     holding_value = await _get_holding_value(user.id, stock_code, mode, db)

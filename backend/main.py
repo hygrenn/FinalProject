@@ -8,6 +8,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware.rate_limit import limiter
+from api.routes import account as account_router
 from api.routes import ai as ai_router
 from api.routes import alerts as alerts_router
 from api.routes import auth as auth_router
@@ -56,6 +57,7 @@ app.include_router(alerts_router.router, prefix="/alerts", tags=["alerts"])
 app.include_router(backtest_router.router, prefix="/backtest", tags=["backtest"])
 app.include_router(simulate_router.router, prefix="/simulate", tags=["simulate"])
 app.include_router(watchlist_router.router, prefix="/watchlist", tags=["watchlist"])
+app.include_router(account_router.router, prefix="/account", tags=["account"])
 
 
 @app.get("/health")

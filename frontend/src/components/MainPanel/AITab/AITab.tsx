@@ -30,15 +30,17 @@ const TF_LABELS: [string, MultiframeSignal['timeframe']][] = [
 ]
 
 export function AITab() {
-  const selectedStock = useStockStore((s) => s.selectedStock)
+  const { selectedStock } = useStockStore()
   const [signal, setSignal] = useState<AISignal>(MOCK_AI_SIGNAL)
   const [multiframe, setMultiframe] = useState<MultiframeSignal[]>(MOCK_MULTIFRAME)
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedStock?.code) return
     const code = selectedStock.code
     const fetchData = async () => {
+      setFetchError(null)
       setLoading(true)
       try {
         const [sigRes, mfRes] = await Promise.all([
@@ -54,7 +56,6 @@ export function AITab() {
             signal_score: sd.signal_score,
             tech_score: sd.signal_breakdown?.technical_score ?? sd.signal_score,
             lstm_score: sd.signal_breakdown?.lstm_score ?? 50,
-            // 백엔드는 별도 confidence를 주지 않으므로 중립(50)에서의 거리로 산출한다.
             confidence: Math.min(1, Math.abs(sd.signal_score - 50) / 50),
           }))
         }
@@ -68,8 +69,10 @@ export function AITab() {
           }))
           if (frames.length > 0) setMultiframe(frames)
         }
-      } catch {
-        // keep mock data on error
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        setFetchError(msg)
+        console.error('[AITab] fetch 실패:', e)
       } finally {
         setLoading(false)
       }
@@ -83,6 +86,11 @@ export function AITab() {
     <div className="h-full overflow-y-auto p-4 space-y-4">
       {loading && (
         <div className="text-xs text-muted-foreground text-center py-2">AI 분석 중...</div>
+      )}
+      {fetchError && (
+        <div className="text-xs text-red-400 text-center py-2 border border-red-400/30 rounded px-3">
+          API 오류: {fetchError}
+        </div>
       )}
       <SignalCard
         signal={sig}

@@ -19,7 +19,7 @@ export function WatchlistPanel() {
         >
           <span className="font-medium">{stock.name}</span>
           {stock.price && (
-            <span>{stock.price.toLocaleString()}</span>
+            <span>{stock.price.toLocaleString('ko-KR')}</span>
           )}
           {stock.change_pct !== undefined && (
             <span className={stock.change_pct >= 0 ? 'text-green-500' : 'text-red-500'}>

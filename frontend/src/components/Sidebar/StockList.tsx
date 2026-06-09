@@ -24,7 +24,7 @@ export function StockList({ stocks }: StockListProps) {
           <span className="truncate">{stock.name}</span>
           {stock.price && (
             <div className="text-right ml-2 shrink-0">
-              <div className="text-xs font-medium">{stock.price.toLocaleString()}</div>
+              <div className="text-xs font-medium">{stock.price.toLocaleString('ko-KR')}</div>
               {stock.change_pct !== undefined && (
                 <div
                   className={cn(

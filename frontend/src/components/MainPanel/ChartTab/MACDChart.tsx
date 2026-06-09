@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createChart, ColorType, HistogramSeries, LineSeries } from 'lightweight-charts'
+import type { HistogramData, LineData, Time } from 'lightweight-charts'
 import type { MACDPoint } from '@/types'
 
 interface MACDChartProps {
@@ -32,17 +33,17 @@ export function MACDChart({ data }: MACDChartProps) {
     })
     histogram.setData(
       data.map((d) => ({
-        time: d.time,
+        time: d.time as Time,
         value: d.histogram,
         color: d.histogram >= 0 ? '#3fb950' : '#ef4444',
-      }))
+      })) as HistogramData<Time>[]
     )
 
     const macdLine = chart.addSeries(LineSeries, { color: '#58a6ff', lineWidth: 1 })
-    macdLine.setData(data.map((d) => ({ time: d.time, value: d.macd })))
+    macdLine.setData(data.map((d) => ({ time: d.time as Time, value: d.macd })) as LineData<Time>[])
 
     const signalLine = chart.addSeries(LineSeries, { color: '#e3b341', lineWidth: 1 })
-    signalLine.setData(data.map((d) => ({ time: d.time, value: d.signal })))
+    signalLine.setData(data.map((d) => ({ time: d.time as Time, value: d.signal })) as LineData<Time>[])
 
     chart.timeScale().fitContent()
 

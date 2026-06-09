@@ -1,6 +1,6 @@
 // frontend/src/components/MainPanel/ChartTab/ChartTab.tsx
 import { useStockStore } from '@/store/stockStore'
-import { MOCK_CANDLES, MOCK_PREDICTION, MOCK_PATTERNS } from '@/lib/mockData'
+import { MOCK_CANDLES, MOCK_PATTERNS } from '@/lib/mockData'
 import { calculateRSI, calculateMACD } from '@/lib/indicators'
 import { useStockWebSocket } from '@/hooks/useStockWebSocket'
 import { StockInfoBar } from './StockInfoBar'
@@ -52,28 +52,45 @@ export function ChartTab() {
   const [chart, setChart] = useState<IChartApi | null>(null)
   const [candles, setCandles] = useState<Candle[]>(MOCK_CANDLES)
   const [patterns, setPatterns] = useState<CandlePattern[]>(MOCK_PATTERNS)
-  const [prediction, setPrediction] = useState<Prediction>(MOCK_PREDICTION)
+  const [prediction, setPrediction] = useState<Prediction>({ bullish: [], base: [], bearish: [], confidence: 0 })
   const [detail, setDetail] = useState<StockDetail | null>(null)
+  const [interval, setInterval] = useState('day')
+  const [loadingIntraday, setLoadingIntraday] = useState(false)
 
   useEffect(() => {
     if (!selectedStock?.code) return
     const code = selectedStock.code
 
-    api.get(`/stocks/${code}/chart`).then(({ data }) => {
-      const raw: { date: string; open: number; high: number; low: number; close: number; volume: number }[] = data.data ?? []
-      if (raw.length === 0) return
-      const mapped = raw.map((d) => ({
-        time: d.date.length === 8 ? yyyymmddToIso(d.date) : d.date,
-        open: d.open,
-        high: d.high,
-        low: d.low,
-        close: d.close,
-        volume: d.volume,
-      }))
-      setCandles(mapped)
-      const last = raw[raw.length - 1]
-      if (last) setDetail({ open: last.open, high: last.high, low: last.low, volume: last.volume })
-    }).catch(() => {})
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const fetchChart = async () => {
+      try {
+        const { data } = await api.get(`/stocks/${code}/chart`, { params: { interval } })
+        if (cancelled) return
+        const raw: { date: string | number; open: number; high: number; low: number; close: number; volume: number }[] = data.data ?? []
+        if (raw.length > 0) {
+          const mapped = raw.map((d) => ({
+            time: typeof d.date === 'number'
+              ? d.date
+              : (String(d.date).length === 8 ? yyyymmddToIso(String(d.date)) : String(d.date)),
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+            volume: d.volume,
+          }))
+          setCandles(mapped)
+          const last = raw[raw.length - 1]
+          if (last) setDetail({ open: last.open, high: last.high, low: last.low, volume: last.volume })
+        }
+        const isLoading = data.status === 'loading_intraday'
+        setLoadingIntraday(isLoading)
+        if (isLoading) timer = setTimeout(fetchChart, 3000)
+      } catch {
+        setLoadingIntraday(false)
+      }
+    }
+    fetchChart()
 
     api.get<PatternResponse>(`/ai/${code}/patterns`).then(({ data }) => {
       const raw = data?.patterns ?? []
@@ -100,11 +117,28 @@ export function ChartTab() {
       if (bullish.length === 0 && base.length === 0 && bearish.length === 0) return
       setPrediction({ bullish, base, bearish, confidence: 0 })
     }).catch(() => {})
-  }, [selectedStock?.code])
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [selectedStock?.code, interval])
 
+  const INTRADAY = new Set(['1min', '5min', '15min', '1h'])
   const rsiData = useMemo(() => calculateRSI(candles), [candles])
   const macdData = useMemo(() => calculateMACD(candles), [candles])
-  const lastCandleTime = candles[candles.length - 1]?.time ?? '2026-01-01'
+  const lastCandleRaw = candles[candles.length - 1]?.time
+  const lastCandleTime = typeof lastCandleRaw === 'number'
+    ? new Date(lastCandleRaw * 1000).toISOString().slice(0, 10)
+    : (lastCandleRaw ?? '2026-01-01')
+
+  const INTERVALS = [
+    { key: '1min', label: '1분' },
+    { key: '5min', label: '5분' },
+    { key: '1h',   label: '1시간' },
+    { key: 'day',  label: '일' },
+    { key: 'week', label: '주' },
+    { key: 'month',label: '월' },
+  ]
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -117,15 +151,35 @@ export function ChartTab() {
           realtimeChangePct={realtimePrice?.change_pct}
         />
       )}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0">
+        {INTERVALS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setInterval(key)}
+            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+              interval === key
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        {loadingIntraday && (
+          <span className="ml-auto text-xs text-muted-foreground">분봉 불러오는 중 · 일봉 임시 표시</span>
+        )}
+      </div>
       <PatternBadges patterns={patterns} />
       <div className="flex flex-col flex-1 min-h-0 gap-0.5 p-1">
         <div className="flex-[3] min-h-0">
           <CandleChart candles={candles} onChartReady={setChart} />
-          <PredictionOverlay
-            chart={chart}
-            prediction={prediction}
-            lastCandleTime={lastCandleTime}
-          />
+          {!INTRADAY.has(interval) && (
+            <PredictionOverlay
+              chart={chart}
+              prediction={prediction}
+              lastCandleTime={lastCandleTime}
+            />
+          )}
         </div>
         <div className="flex-1 min-h-0">
           <RSIChart data={rsiData} />
