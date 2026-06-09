@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { createChart, ColorType, LineSeries } from 'lightweight-charts'
+import type { LineData, Time } from 'lightweight-charts'
 
 interface RSIChartProps {
-  data: { time: string; value: number }[]
+  data: { time: string | number; value: number }[]
 }
 
 export function RSIChart({ data }: RSIChartProps) {
@@ -27,13 +28,19 @@ export function RSIChart({ data }: RSIChartProps) {
     })
 
     const series = chart.addSeries(LineSeries, { color: '#58a6ff', lineWidth: 1 })
-    series.setData(data)
+    series.setData(data as LineData<Time>[])
 
     const overbought = chart.addSeries(LineSeries, { color: '#f85149', lineWidth: 1, lineStyle: 2 })
     const oversold = chart.addSeries(LineSeries, { color: '#3fb950', lineWidth: 1, lineStyle: 2 })
     if (data.length > 0) {
-      overbought.setData([{ time: data[0].time, value: 70 }, { time: data[data.length - 1].time, value: 70 }])
-      oversold.setData([{ time: data[0].time, value: 30 }, { time: data[data.length - 1].time, value: 30 }])
+      overbought.setData([
+        { time: data[0].time as Time, value: 70 },
+        { time: data[data.length - 1].time as Time, value: 70 },
+      ])
+      oversold.setData([
+        { time: data[0].time as Time, value: 30 },
+        { time: data[data.length - 1].time as Time, value: 30 },
+      ])
     }
 
     chart.timeScale().fitContent()

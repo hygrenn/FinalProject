@@ -413,29 +413,37 @@ docker-compose up --build
 
 `.env.example` 복사해서 `.env` 만들기. `.env`는 절대 커밋 금지.
 
-## KIS API 사용 reference codes (참고용)
-" reference/ "  폴더에 레퍼런스 코드가 있음. 정확한 정보 필요시 작업 전 관련 파일을 직접 읽어볼 것
-reference/access_token_issuance.py     # 접근코드 발급
-reference/kis_auth.py                  #
-reference/kis_domstk.py                # import할 샘플파일 제공
-reference/kis_domstk_current.py        # 주식현재가 시세
-reference/kis_domstk_buy.py            # 국내주식 기본시세 > 주식현재가 체결 시세 가져오기
-reference/kis_domstk_day.py            # 일자별 시세
-reference/kis_domstk_hoga.py           # 호가/예상체결 정보 가져오기
-reference/kis_domstk_sise.py           # 국내주식기간별시세(일/주/월/년)
-reference/kis_domstk_dangil.py         # 당일시간대별체결 정보
-reference/kis_domstk_cash.py           # 주식주문 api 이용, 원하는 종목 매수/매도
-reference/kis_domstk_cancel.py         # 주식주문 정정취소
-reference/kis_domstk_johwe.py          # 주식정정취소가능주문내역조회
-reference/kis_domstk_cur.py            # 주식일별주문체결현황조회
-reference/kis_api.py                   # api 호출 샘플
-reference/kis_api_test.py              # api 호출 실행
-reference/kis_dev.yaml                 
-reference/kis_api_responce.py          # api 응답 처리
-reference/kis_api_call.py              # api 호출
-reference/token_issue.py               # 토큰 발급
-reference/token_reissue.py             # 토큰 재발급
-reference/hash_generate.py             # 해쉬키 생성
+## KIS OpenAPI 공식 참조
+
+한국투자증권 공식 저장소를 `references/open-trading-api` Git submodule로 관리한다.
+KIS API를 구현하거나 수정할 때는 기억이나 추측보다 이 저장소의 최신 샘플을 우선한다.
+
+### 확인 순서
+
+1. `references/open-trading-api/examples_llm/`에서 해당 기능의 최소 API 샘플 검색
+2. `references/open-trading-api/examples_user/`에서 인증과 통합 사용 방식 확인
+3. `references/open-trading-api/docs/`와 `references/open-trading-api/MCP/KIS Code Assistant MCP/` 확인
+4. 현재 프로젝트의 `backend/services/kis_service.py`, `kis_market_service.py` 구조에 맞게 적용
+5. 관련 테스트를 추가하고 모의투자 환경에서 검증
+
+### 필수 규칙
+
+- TR ID, URL, 요청/응답 필드, 실전/모의투자 구분을 추측하지 않는다.
+- 공식 샘플과 현재 구현이 다르면 공식 샘플을 확인한 뒤 차이와 변경 이유를 기록한다.
+- 주문, 정정, 취소 등 거래 API는 사용자 승인 없이 실제 계좌에 호출하지 않는다.
+- 가능한 경우 실제 호출 검증은 모의투자 환경에서 수행한다.
+- 앱 키, 앱 시크릿, 계좌번호, 접근 토큰, `kis_devlp.yaml`, `.env.live`를 커밋하지 않는다.
+- KIS Trading MCP는 실제 거래 기능이 있으므로 사용자 명시적 요청과 승인 없이 실행하거나 연결하지 않는다.
+
+### Submodule 명령
+
+```bash
+# 저장소를 처음 받은 뒤 공식 참조 저장소 받기
+git submodule update --init --recursive
+
+# 공식 참조 저장소 최신화
+git submodule update --remote references/open-trading-api
+```
 ---
 
 ## 11. 협업 규칙

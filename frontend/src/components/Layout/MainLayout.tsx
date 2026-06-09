@@ -11,22 +11,24 @@ import { RegisterModal } from '@/components/auth/RegisterModal'
 import { OrderBook } from '@/components/Trade/OrderBook'
 import { MOCK_ORDER_BOOK } from '@/lib/mockData'
 import { useStockStore } from '@/store/stockStore'
+import { AccountPanel } from '@/components/Account/AccountPanel'
 
 export function MainLayout() {
   const { sidebarOpen } = useUIStore()
   const [modal, setModal] = useState<'login' | 'register' | null>(null)
+  const [accountOpen, setAccountOpen] = useState(false)
   const { selectedStock, realtimePrice, loadStocks } = useStockStore()
 
-  useEffect(() => { loadStocks() }, [])
+  useEffect(() => { loadStocks() }, [loadStocks])
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      <Header onLoginClick={() => setModal('login')} />
+      <Header onLoginClick={() => setModal('login')} onAccountClick={() => setAccountOpen(true)} />
       <MobileTabBar />
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {sidebarOpen && (
-          <div className="hidden md:block">
+          <div className="hidden md:flex md:flex-col min-h-0">
             <Sidebar />
           </div>
         )}
@@ -55,6 +57,16 @@ export function MainLayout() {
         onClose={() => setModal(null)}
         onLogin={() => setModal('login')}
       />
+
+      {accountOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/30"
+            onClick={() => setAccountOpen(false)}
+          />
+          <AccountPanel onClose={() => setAccountOpen(false)} />
+        </>
+      )}
     </div>
   )
 }

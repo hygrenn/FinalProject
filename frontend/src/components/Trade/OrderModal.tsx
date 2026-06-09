@@ -1,11 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { Stock } from '@/types'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-import { useAuthStore } from '@/store/authStore'
 
 interface OrderModalProps {
   open: boolean
@@ -20,13 +19,26 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
   const [price, setPrice] = useState(String(stock.price ?? 0))
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const user = useAuthStore((s) => s.user)
+  const [account, setAccount] = useState<{ mode: 'paper' | 'real'; account_no: string } | null>(null)
+  const [confirmingReal, setConfirmingReal] = useState(false)
 
   const isBuy = orderType === 'BUY'
   const total = Number(quantity) * Number(price)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  useEffect(() => {
+    if (!open) return
+    api.get('/account/config')
+      .then(({ data }) => setAccount(data))
+      .catch(() => setAccount(null))
+  }, [open])
+
+  const closeModal = () => {
+    setConfirmingReal(false)
+    setAccount(null)
+    onClose()
+  }
+
+  const submitOrder = async () => {
     setError(null)
     setSubmitted(true)
     try {
@@ -36,9 +48,8 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
         price_type: priceType,
         quantity: Number(quantity),
         price: priceType === 'LIMIT' ? Number(price) : undefined,
-        mode: user?.mode ?? 'paper',
       })
-      setTimeout(() => { setSubmitted(false); onClose() }, 1500)
+      setTimeout(() => { setSubmitted(false); closeModal() }, 1500)
     } catch (err: unknown) {
       setSubmitted(false)
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -46,8 +57,17 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
     }
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (account?.mode === 'real' && !confirmingReal) {
+      setConfirmingReal(true)
+      return
+    }
+    await submitOrder()
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && closeModal()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className={cn(isBuy ? 'text-green-400' : 'text-red-400')}>
@@ -66,6 +86,20 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
+            {account && (
+              <div className={`text-xs rounded p-2 ${
+                account.mode === 'real'
+                  ? 'text-red-300 bg-red-500/10 border border-red-500/20'
+                  : 'text-blue-300 bg-blue-500/10 border border-blue-500/20'
+              }`}>
+                {account.mode === 'real' ? '실계좌' : '모의투자'} · {account.account_no}
+              </div>
+            )}
+            {confirmingReal && (
+              <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded p-3">
+                실계좌 주문을 실행하시겠습니까?
+              </div>
+            )}
             <div className="flex gap-2">
               {(['LIMIT', 'MARKET'] as const).map((type) => (
                 <Button
@@ -106,7 +140,7 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
 
             {priceType === 'LIMIT' && (
               <div className="text-sm text-right text-muted-foreground">
-                주문금액: <span className="text-foreground font-medium">{total.toLocaleString()}원</span>
+                주문금액: <span className="text-foreground font-medium">{total.toLocaleString('ko-KR')}원</span>
               </div>
             )}
 
@@ -115,12 +149,12 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
             )}
 
             <div className="flex gap-2 pt-1">
-              <Button type="button" variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={closeModal}>취소</Button>
               <Button
                 type="submit"
                 className={cn('flex-1', isBuy ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600')}
               >
-                주문
+                {confirmingReal ? '실계좌 주문 확인' : '주문'}
               </Button>
             </div>
           </form>

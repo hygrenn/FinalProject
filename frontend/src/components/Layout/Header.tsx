@@ -9,7 +9,7 @@ import { MOCK_STOCKS } from '@/lib/mockData'
 import { useState } from 'react'
 import { RiskSettingsModal } from '@/components/Risk/RiskSettingsModal'
 
-export function Header({ onLoginClick }: { onLoginClick: () => void }) {
+export function Header({ onLoginClick, onAccountClick }: { onLoginClick: () => void; onAccountClick?: () => void }) {
   const { darkMode, toggleDarkMode } = useUIStore()
   const { user } = useAuthStore()
   const { setSelectedStock } = useStockStore()
@@ -69,7 +69,10 @@ export function Header({ onLoginClick }: { onLoginClick: () => void }) {
           {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
         {user ? (
-          <span className="text-sm text-muted-foreground">{user.email}</span>
+          <Button variant="ghost" size="sm" onClick={onAccountClick} className="text-sm text-muted-foreground gap-1.5">
+            <User className="h-4 w-4" />
+            <span className="max-w-32 truncate">{user.email}</span>
+          </Button>
         ) : (
           <Button variant="outline" size="sm" onClick={onLoginClick}>
             <User className="h-4 w-4 mr-1" /> 로그인

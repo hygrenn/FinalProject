@@ -5,6 +5,15 @@ const api = axios.create({
   withCredentials: true,
 })
 
+export function shouldAttemptTokenRefresh(
+  status: number | undefined,
+  url: string | undefined,
+  alreadyRetried: boolean,
+  hasAccessToken: boolean
+) {
+  return status === 401 && !alreadyRetried && hasAccessToken && !url?.includes('/auth/')
+}
+
 api.interceptors.request.use((config) => {
   const token = useAuthTokenRef.getToken()
   if (token) {
@@ -17,7 +26,15 @@ api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config as (typeof error.config & { _retry?: boolean }) | undefined
-    if (error.response?.status === 401 && original && !original._retry) {
+    if (
+      original
+      && shouldAttemptTokenRefresh(
+        error.response?.status,
+        original.url,
+        Boolean(original._retry),
+        Boolean(useAuthTokenRef.getToken())
+      )
+    ) {
       original._retry = true
       try {
         const { data } = await axios.post(

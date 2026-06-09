@@ -33,7 +33,7 @@ export function StockInfoBar({ stock, detail, isLive, realtimePrice, realtimeCha
         </div>
         <div className="text-right">
           <span className={cn('font-bold text-xl', isPositive ? 'text-green-500' : 'text-red-500')}>
-            {price.toLocaleString()}
+            {price.toLocaleString('ko-KR')}
           </span>
           <span className={cn('ml-2 text-sm', isPositive ? 'text-green-500' : 'text-red-500')}>
             {isPositive ? '▲' : '▼'}{Math.abs(changePct).toFixed(2)}%
@@ -51,7 +51,7 @@ export function StockInfoBar({ stock, detail, isLive, realtimePrice, realtimeCha
           <div key={label} className="bg-background rounded px-2 py-1 text-center">
             <div className="text-muted-foreground text-xs mb-0.5">{label}</div>
             <div className={cn('text-xs font-semibold', color)}>
-              {value == null ? '-' : isVolume ? `${(value / 1000000).toFixed(1)}M` : value.toLocaleString()}
+              {value == null ? '-' : isVolume ? `${(value / 1000000).toFixed(1)}M` : value.toLocaleString('ko-KR')}
             </div>
           </div>
         ))}

@@ -44,6 +44,7 @@ export function PredictionOverlay({ chart, prediction, lastCandleTime }: Predict
     ]
 
     configs.forEach(({ values, color }) => {
+      if (values.length === 0) return
       const series = chart.addSeries(LineSeries, {
         color,
         lineWidth: 1,

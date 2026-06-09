@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db
 from api.middleware.rate_limit import limiter
+from core.config import settings
 from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
@@ -33,8 +34,9 @@ async def get_portfolio(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    mode = settings.SYSTEM_KIS_MODE
     # real 모드: KIS API에서 정확한 잔고/평균단가 조회
-    if user.mode == "real":
+    if mode == "real":
         try:
             kis_data = await kis_service.get_balance_full(user)
             total_eval = kis_data["total_eval"]
@@ -52,7 +54,7 @@ async def get_portfolio(
             # 400 = KIS 키 미설정 → DB fallback
 
     # paper 모드 또는 KIS 키 미설정 시 DB 기반 계산
-    holdings = await _get_holdings(user.id, user.mode, db)
+    holdings = await _get_holdings(user.id, mode, db)
     result = []
     total_eval = 0
     total_cost = 0
@@ -98,7 +100,7 @@ async def get_performance(
     result = await db.execute(
         select(Trade).where(
             Trade.user_id == user.id,
-            Trade.mode == user.mode,
+            Trade.mode == settings.SYSTEM_KIS_MODE,
             Trade.status == "FILLED",
             Trade.filled_at >= cutoff,
         ).order_by(Trade.filled_at)
@@ -132,7 +134,7 @@ async def get_metrics(
     result = await db.execute(
         select(Trade).where(
             Trade.user_id == user.id,
-            Trade.mode == user.mode,
+            Trade.mode == settings.SYSTEM_KIS_MODE,
             Trade.status == "FILLED",
             Trade.order_type == "SELL",
         )
@@ -193,7 +195,7 @@ async def export_portfolio(
     db: AsyncSession = Depends(get_db),
 ):
     """포트폴리오 CSV 다운로드."""
-    holdings = await _get_holdings(user.id, user.mode, db)
+    holdings = await _get_holdings(user.id, settings.SYSTEM_KIS_MODE, db)
 
     output = io.StringIO()
     writer = csv.writer(output)

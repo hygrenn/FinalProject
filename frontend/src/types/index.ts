@@ -38,7 +38,7 @@ export interface Prediction {
 }
 
 export interface Candle {
-  time: string
+  time: string | number
   open: number
   high: number
   low: number
@@ -109,7 +109,7 @@ export interface RealtimePrice {
 }
 
 export interface MACDPoint {
-  time: string
+  time: string | number
   macd: number
   signal: number
   histogram: number

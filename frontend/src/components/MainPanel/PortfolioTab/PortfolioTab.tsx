@@ -92,7 +92,7 @@ export function PortfolioTab() {
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
               <Tooltip
-                formatter={(v: number) => [`${v.toLocaleString()}원`, '누적 손익']}
+                formatter={(v) => [`${Number(v ?? 0).toLocaleString('ko-KR')}원`, '누적 손익']}
                 contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: 11 }}
               />
               <Line type="monotone" dataKey="value" stroke="#58a6ff" dot={false} strokeWidth={1.5} />
@@ -112,10 +112,10 @@ export function PortfolioTab() {
               <div key={h.stock_code} className="flex items-center justify-between text-sm py-1.5 border-b border-border last:border-0">
                 <div>
                   <div className="font-medium">{h.stock_name}</div>
-                  <div className="text-xs text-muted-foreground">{h.quantity}주 · 평균 {h.avg_price.toLocaleString()}원</div>
+                  <div className="text-xs text-muted-foreground">{h.quantity}주 · 평균 {h.avg_price.toLocaleString('ko-KR')}원</div>
                 </div>
                 <div className="text-right">
-                  <div>{h.current_price.toLocaleString()}원</div>
+                  <div>{h.current_price.toLocaleString('ko-KR')}원</div>
                   <div className={cn('text-xs', h.return_pct >= 0 ? 'text-green-400' : 'text-red-400')}>
                     {h.return_pct >= 0 ? '+' : ''}{h.return_pct.toFixed(2)}%
                   </div>

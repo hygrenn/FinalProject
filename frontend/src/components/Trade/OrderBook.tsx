@@ -23,8 +23,8 @@ export function OrderBook({ asks, bids, currentPrice }: OrderBookProps) {
                 className="absolute right-0 top-0 bottom-0 bg-red-400/10"
                 style={{ width: `${(ask.quantity / maxQty) * 100}%` }}
               />
-              <span className="text-red-400 font-medium relative z-10">{ask.price.toLocaleString()}</span>
-              <span className="text-muted-foreground relative z-10">{ask.quantity.toLocaleString()}</span>
+              <span className="text-red-400 font-medium relative z-10">{ask.price.toLocaleString('ko-KR')}</span>
+              <span className="text-muted-foreground relative z-10">{ask.quantity.toLocaleString('ko-KR')}</span>
             </div>
           ))}
         </div>
@@ -32,7 +32,7 @@ export function OrderBook({ asks, bids, currentPrice }: OrderBookProps) {
 
       {/* 현재가 */}
       <div className="text-center py-1 border-y border-border bg-card font-bold text-sm">
-        {currentPrice.toLocaleString()}
+        {currentPrice.toLocaleString('ko-KR')}
       </div>
 
       {/* 매수호가 */}
@@ -44,8 +44,8 @@ export function OrderBook({ asks, bids, currentPrice }: OrderBookProps) {
                 className="absolute right-0 top-0 bottom-0 bg-green-400/10"
                 style={{ width: `${(bid.quantity / maxQty) * 100}%` }}
               />
-              <span className="text-green-400 font-medium relative z-10">{bid.price.toLocaleString()}</span>
-              <span className="text-muted-foreground relative z-10">{bid.quantity.toLocaleString()}</span>
+              <span className="text-green-400 font-medium relative z-10">{bid.price.toLocaleString('ko-KR')}</span>
+              <span className="text-muted-foreground relative z-10">{bid.quantity.toLocaleString('ko-KR')}</span>
             </div>
           ))}
         </div>

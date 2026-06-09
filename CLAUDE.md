@@ -413,29 +413,63 @@ docker-compose up --build
 
 `.env.example` 복사해서 `.env` 만들기. `.env`는 절대 커밋 금지.
 
-## KIS API 사용 reference codes (참고용)
-" reference/ "  폴더에 레퍼런스 코드가 있음. 정확한 정보 필요시 작업 전 관련 파일을 직접 읽어볼 것
-reference/access_token_issuance.py     # 접근코드 발급
-reference/kis_auth.py                  #
-reference/kis_domstk.py                # import할 샘플파일 제공
-reference/kis_domstk_current.py        # 주식현재가 시세
-reference/kis_domstk_buy.py            # 국내주식 기본시세 > 주식현재가 체결 시세 가져오기
-reference/kis_domstk_day.py            # 일자별 시세
-reference/kis_domstk_hoga.py           # 호가/예상체결 정보 가져오기
-reference/kis_domstk_sise.py           # 국내주식기간별시세(일/주/월/년)
-reference/kis_domstk_dangil.py         # 당일시간대별체결 정보
-reference/kis_domstk_cash.py           # 주식주문 api 이용, 원하는 종목 매수/매도
-reference/kis_domstk_cancel.py         # 주식주문 정정취소
-reference/kis_domstk_johwe.py          # 주식정정취소가능주문내역조회
-reference/kis_domstk_cur.py            # 주식일별주문체결현황조회
-reference/kis_api.py                   # api 호출 샘플
-reference/kis_api_test.py              # api 호출 실행
-reference/kis_dev.yaml                 
-reference/kis_api_responce.py          # api 응답 처리
-reference/kis_api_call.py              # api 호출
-reference/token_issue.py               # 토큰 발급
-reference/token_reissue.py             # 토큰 재발급
-reference/hash_generate.py             # 해쉬키 생성
+## KIS API 레퍼런스 코드
+
+> **AI agent 필독:** KIS API 관련 작업 전 반드시 아래 경로의 파일을 `Read` 도구로 직접 읽을 것.
+> 추측으로 코드 작성 금지 — 필드명·TR ID·헤더 구조가 틀리면 500 에러 발생.
+
+### 레퍼런스 위치
+
+공식 KIS Open Trading API 전체 저장소가 로컬에 클론되어 있음:
+```
+references/open-trading-api/
+├── examples_llm/          ← AI agent용 예제 (이걸 우선 참고)
+│   ├── kis_auth.py        ← 토큰 발급·헤더 구조
+│   ├── domestic_stock/    ← 국내주식 전체 기능별 예제
+│   ├── auth/              ← REST 토큰 / WebSocket 토큰
+│   └── convention.md      ← 네이밍 규칙, 공통 패턴
+├── docs/                  ← 기능별 상세 문서
+└── kis_devlp.yaml         ← TR ID 목록, 엔드포인트 정의
+```
+
+### 작업별 읽어야 할 파일
+
+| 작업 | 읽을 파일 |
+|---|---|
+| 토큰 발급 / 헤더 구조 | `examples_llm/kis_auth.py` |
+| 주식현재가 조회 | `examples_llm/domestic_stock/inquire_price/inquire_price.py` |
+| 1분봉 차트 | `examples_llm/domestic_stock/inquire_time_itemchartprice/inquire_time_itemchartprice.py` |
+| 일별 차트 | `examples_llm/domestic_stock/inquire_daily_itemchartprice/inquire_daily_itemchartprice.py` |
+| 10단 호가 | `examples_llm/domestic_stock/inquire_asking_price_exp_ccn/inquire_asking_price_exp_ccn.py` |
+| 체결 내역 | `examples_llm/domestic_stock/inquire_time_itemconclusion/inquire_time_itemconclusion.py` |
+| 매수/매도 주문 | `examples_llm/domestic_stock/order_cash/order_cash.py` |
+| 주문 정정/취소 | `examples_llm/domestic_stock/order_rvsecncl/order_rvsecncl.py` |
+| 잔고 조회 | `examples_llm/domestic_stock/inquire_balance/inquire_balance.py` |
+| 체결 가능 수량 | `examples_llm/domestic_stock/inquire_psbl_order/inquire_psbl_order.py` |
+| hashkey 생성 | `examples_llm/kis_auth.py` 내 hashkey 섹션 |
+
+### 핵심 주의사항 (실제 개발 중 발견한 gotcha)
+
+```
+1. 시세 조회(FHKST*)는 모의투자 서버 미지원
+   → FID_COND_MRKT_DIV_CODE 사용 API는 항상 실전 서버(openapi:9443) 호출
+   → 모의투자 자격증명으로도 실전 서버 시세 조회 가능
+
+2. inquire-time-itemchartprice (1분봉) rate limit
+   → 호출 간격 최소 1.0초 필요 (0.5초 → 4번째 호출부터 500 에러)
+
+3. 1분봉 페이지네이션
+   → 1회 30건 반환, 이전 구간은 FID_INPUT_HOUR_1 = earliest - 1분으로 재조회
+   → stck_bsop_date 필터로 오늘 데이터만 선별 (이전날 데이터 섞임 주의)
+
+4. 주문 시 hashkey 필수
+   → POST /uapi/domestic-stock/v1/trading/order-cash 요청 전
+   → POST /uapi/hashkey 로 body 해시 생성 후 헤더에 포함
+
+5. 잔고조회 TR ID
+   → 실계좌: TTTC8434R  / 모의투자: VTTC8434R
+   → 계좌번호 = CANO(앞 8자리) + ACNT_PRDT_CD(뒤 2자리) 분리해서 파라미터 전달
+```
 ---
 
 ## 11. 협업 규칙

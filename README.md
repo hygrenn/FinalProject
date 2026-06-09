@@ -2,6 +2,12 @@
 
 AI 기반 주식 분석 플랫폼 (FastAPI + React + PostgreSQL + Redis)
 
+저장소를 처음 clone한 경우 한국투자증권 공식 API 참조 저장소도 초기화합니다.
+
+```bash
+git submodule update --init --recursive
+```
+
 ## 통합 개발 환경 실행
 
 ### 1. 환경 변수 설정 (선택)

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Literal
 
 from api.deps import get_current_user, get_db
+from core.config import settings
 from api.middleware.rate_limit import limiter
 from models.portfolio import Portfolio
 from models.trade import Trade
@@ -48,15 +49,16 @@ async def place_order(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if user.mode == "demo":
-        raise HTTPException(status_code=403, detail="KIS 키를 먼저 등록하세요.")
+    if not settings.SYSTEM_KIS_APP_KEY:
+        raise HTTPException(status_code=503, detail="KIS API 키가 서버에 설정되지 않았습니다 (.env SYSTEM_KIS_APP_KEY)")
+    order_mode = settings.SYSTEM_KIS_MODE
 
     if body.order_type == "SELL":
         result = await db.execute(
             select(Portfolio).where(
                 Portfolio.user_id == user.id,
                 Portfolio.stock_code == body.stock_code,
-                Portfolio.mode == user.mode,
+                Portfolio.mode == order_mode,
             ).with_for_update()
         )
         holding = result.scalar_one_or_none()
@@ -64,7 +66,7 @@ async def place_order(
             select(func.coalesce(func.sum(Trade.quantity - Trade.filled_quantity), 0)).where(
                 Trade.user_id == user.id,
                 Trade.stock_code == body.stock_code,
-                Trade.mode == user.mode,
+                Trade.mode == order_mode,
                 Trade.order_type == "SELL",
                 Trade.status.in_(["PENDING", "PARTIALLY_FILLED"]),
             )
@@ -92,7 +94,7 @@ async def place_order(
             )
 
     warning = await risk_service.check_order(
-        user, body.stock_code, body.order_type, body.quantity, risk_price, db
+        user, body.stock_code, body.order_type, body.quantity, risk_price, db, mode=order_mode
     )
 
     result = await kis_service.place_order(
@@ -108,14 +110,14 @@ async def place_order(
         quantity=body.quantity,
         order_price=body.price if body.price_type == "LIMIT" else None,
         status="PENDING",
-        mode=user.mode,
+        mode=order_mode,
         kis_order_no=kis_order_no,
     )
     db.add(trade)
     await db.commit()
     await db.refresh(trade)
 
-    poll_order_fill.delay(str(trade.id), str(user.id), kis_order_no, user.mode)
+    poll_order_fill.delay(str(trade.id), str(user.id), kis_order_no, order_mode)
 
     response: dict = {"trade_id": str(trade.id), "status": "PENDING", "kis_order_no": kis_order_no}
     if warning:
@@ -138,7 +140,7 @@ async def list_trades(
     if mode:
         query = query.where(Trade.mode == mode)
     else:
-        query = query.where(Trade.mode == user.mode)
+        query = query.where(Trade.mode == settings.SYSTEM_KIS_MODE)
     query = query.order_by(Trade.created_at.desc()).limit(100)
 
     result = await db.execute(query)
@@ -180,10 +182,10 @@ async def cancel_trade(
         raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
     if trade.status != "PENDING":
         raise HTTPException(status_code=400, detail=f"취소 불가 상태: {trade.status}")
-    if trade.mode != user.mode:
+    if trade.mode != settings.SYSTEM_KIS_MODE:
         raise HTTPException(
             status_code=409,
-            detail=f"주문 모드({trade.mode})와 현재 모드({user.mode})가 달라 취소할 수 없습니다.",
+            detail=f"주문 모드({trade.mode})와 현재 시스템 모드({settings.SYSTEM_KIS_MODE})가 달라 취소할 수 없습니다.",
         )
     if not trade.kis_order_no:
         raise HTTPException(status_code=400, detail="KIS 주문번호가 없어 취소할 수 없습니다.")

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Path, Request
 from sse_starlette.sse import EventSourceResponse
 
 from api.middleware.rate_limit import limiter
+from core.config import settings
 from core.redis_client import get_redis
 from services.websocket_service import kis_pool
 
@@ -31,4 +32,10 @@ async def stock_stream(
             await kis_pool.unsubscribe(code)
             await pubsub.aclose()
 
-    return EventSourceResponse(event_generator())
+    origin = request.headers.get("origin", "")
+    cors_headers = {
+        "Access-Control-Allow-Origin": origin if origin in settings.cors_origins_list else "",
+        "Access-Control-Allow-Credentials": "true",
+        "Cache-Control": "no-cache",
+    }
+    return EventSourceResponse(event_generator(), headers=cors_headers)

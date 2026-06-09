@@ -1,11 +1,15 @@
+import asyncio
+
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
+from core.config import settings
 from services import kis_market_service, market_service
 
 router = APIRouter()
 
 _INTRADAY_INTERVALS = {"1min", "5min", "15min", "1h"}
+_intraday_tasks: dict[str, asyncio.Task] = {}
 
 
 @router.get("")
@@ -36,16 +40,69 @@ async def get_indices(request: Request):
 async def get_stock_chart(
     request: Request,
     code: str,
-    period: str = Query("1m", pattern="^(1d|1w|1m|3m|1y)$"),
+    period: str = Query("1y", pattern="^(1d|1w|1m|3m|1y|2y)$"),
     interval: str = Query("day", pattern="^(1min|5min|15min|1h|day|week|month)$"),
 ):
     if interval in _INTRADAY_INTERVALS:
-        data = await kis_market_service.get_intraday_ohlcv(code, interval)
-        effective_period = "1d"
+        if not settings.SYSTEM_KIS_APP_KEY:
+            data = await market_service.get_ohlcv_cached(code, "1m", "day")
+            return {
+                "code": code,
+                "period": "1m",
+                "interval": interval,
+                "requested_interval": interval,
+                "actual_interval": "day",
+                "status": "fallback_only",
+                "data": data,
+            }
+
+        task_key = f"{code}:{interval}"
+        task = _intraday_tasks.get(task_key)
+        if task is None:
+            task = asyncio.create_task(kis_market_service.get_intraday_ohlcv(code, interval))
+            _intraday_tasks[task_key] = task
+
+        data = []
+        if task.done():
+            _intraday_tasks.pop(task_key, None)
+            try:
+                data = task.result()
+            except Exception:
+                data = []
+
+        if data:
+            return {
+                "code": code,
+                "period": "1d",
+                "interval": interval,
+                "requested_interval": interval,
+                "actual_interval": interval,
+                "status": "ready",
+                "data": data,
+            }
+
+        data = await market_service.get_ohlcv_cached(code, "1m", "day")
+        return {
+            "code": code,
+            "period": "1m",
+            "interval": interval,
+            "requested_interval": interval,
+            "actual_interval": "day",
+            "status": "loading_intraday",
+            "data": data,
+        }
     else:
         data = await market_service.get_ohlcv_cached(code, period, interval)
         effective_period = period
-    return {"code": code, "period": effective_period, "interval": interval, "data": data}
+    return {
+        "code": code,
+        "period": effective_period,
+        "interval": interval,
+        "requested_interval": interval,
+        "actual_interval": interval,
+        "status": "ready",
+        "data": data,
+    }
 
 
 @router.get("/{code}/orderbook")

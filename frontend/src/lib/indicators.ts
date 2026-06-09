@@ -15,10 +15,10 @@ function ema(values: number[], period: number): number[] {
 export function calculateRSI(
   candles: Candle[],
   period = 14
-): { time: string; value: number }[] {
+): { time: string | number; value: number }[] {
   if (candles.length <= period) return []
 
-  const result: { time: string; value: number }[] = []
+  const result: { time: string | number; value: number }[] = []
   const closes = candles.map((c) => c.close)
 
   let avgGain = 0
@@ -55,7 +55,7 @@ export function calculateMACD(candles: Candle[]): MACDPoint[] {
   const ema26 = ema(closes, 26)
 
   const macdLine: number[] = []
-  const macdTimes: string[] = []
+  const macdTimes: (string | number)[] = []
   // ema26[i] = EMA26 at time (i+25), ema12[i+14] = EMA12 at time (i+25)
   const macdOffset = ema12.length - ema26.length  // = 14
 
