@@ -55,6 +55,7 @@ export function ChartTab() {
   const [prediction, setPrediction] = useState<Prediction>({ bullish: [], base: [], bearish: [], confidence: 0 })
   const [detail, setDetail] = useState<StockDetail | null>(null)
   const [interval, setInterval] = useState('day')
+  const [period, setPeriod] = useState('1y')
   const [loadingIntraday, setLoadingIntraday] = useState(false)
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export function ChartTab() {
     let timer: ReturnType<typeof setTimeout> | undefined
     const fetchChart = async () => {
       try {
-        const { data } = await api.get(`/stocks/${code}/chart`, { params: { interval } })
+        const { data } = await api.get(`/stocks/${code}/chart`, { params: { interval, period } })
         if (cancelled) return
         const raw: { date: string | number; open: number; high: number; low: number; close: number; volume: number }[] = data.data ?? []
         if (raw.length > 0) {
@@ -121,7 +122,7 @@ export function ChartTab() {
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [selectedStock?.code, interval])
+  }, [selectedStock?.code, interval, period])
 
   const INTRADAY = new Set(['1min', '5min', '15min', '1h'])
   const rsiData = useMemo(() => calculateRSI(candles), [candles])
@@ -139,6 +140,17 @@ export function ChartTab() {
     { key: 'week', label: '주' },
     { key: 'month',label: '월' },
   ]
+
+  const PERIODS = [
+    { key: '1m',  label: '1개월' },
+    { key: '3m',  label: '3개월' },
+    { key: '1y',  label: '1년' },
+    { key: '2y',  label: '2년' },
+    { key: '3y',  label: '3년' },
+    { key: '5y',  label: '5년' },
+  ]
+
+  const showPeriodBar = !INTRADAY.has(interval)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -169,6 +181,24 @@ export function ChartTab() {
           <span className="ml-auto text-xs text-muted-foreground">분봉 불러오는 중 · 일봉 임시 표시</span>
         )}
       </div>
+      {showPeriodBar && (
+        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border shrink-0 bg-muted/30">
+          <span className="text-[11px] text-muted-foreground mr-1">기간</span>
+          {PERIODS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setPeriod(key)}
+              className={`px-2 py-0.5 text-[11px] rounded transition-colors ${
+                period === key
+                  ? 'bg-accent text-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <PatternBadges patterns={patterns} />
       <div className="flex flex-col flex-1 min-h-0 gap-0.5 p-1">
         <div className="flex-[3] min-h-0">

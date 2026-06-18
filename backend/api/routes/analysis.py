@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import fundamental_service, market_index_service, recommend_service
+from services import comprehensive_service, fundamental_service, market_index_service, recommend_service
 
 router = APIRouter()
 
@@ -30,3 +30,10 @@ async def get_recommendations(request: Request, limit: int = Query(20, ge=1, le=
 async def get_indices(request: Request):
     """KOSPI/KOSDAQ/KOSPI200 + 시장 추세."""
     return await market_index_service.get_index_context()
+
+
+@router.get("/comprehensive/{code}")
+@limiter.limit("30/minute")
+async def get_comprehensive(request: Request, code: str):
+    """AI 시그널 + 재무 평가 + 시장 지수 → 종합 판단 (0-10점)."""
+    return await comprehensive_service.get_comprehensive(code)

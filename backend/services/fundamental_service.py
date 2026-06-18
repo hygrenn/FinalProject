@@ -55,6 +55,7 @@ def _extract(raw: dict) -> dict:
         "eps": _to_float(infos.get("eps")),
         "bps": _to_float(infos.get("bps")),
         "dividend_yield": _to_float(infos.get("dividendYield")),
+        "roe": _to_float(infos.get("roe")),
     }
 
 
@@ -104,14 +105,38 @@ def _div_component(div: float | None) -> float:
     return 0.3
 
 
+def _roe_component(roe: float | None) -> tuple[float, str]:
+    """ROE(자기자본이익률, %) → 0-1 컴포넌트."""
+    if roe is None:
+        return 0.5, "ROE 데이터 없음"
+    if roe >= 20:
+        return 1.0, f"ROE {roe:.1f}% 우수 (자본 효율 매우 높음)"
+    if roe >= 15:
+        return 0.8, f"ROE {roe:.1f}% 양호"
+    if roe >= 10:
+        return 0.6, f"ROE {roe:.1f}% 보통"
+    if roe >= 5:
+        return 0.4, f"ROE {roe:.1f}% 다소 낮음"
+    if roe >= 0:
+        return 0.2, f"ROE {roe:.1f}% 낮음"
+    return 0.0, f"ROE {roe:.1f}% 마이너스 — 자본 잠식 주의"
+
+
 def score_financials(fund: dict) -> dict:
-    """PER/PBR/EPS/배당 → 5.0 만점(소수 1자리) 재무 점수 + 위험 여부."""
+    """PER/PBR/EPS/배당/ROE → 5.0 만점(소수 1자리) 재무 점수 + 위험 여부."""
     per_c, per_reason = _per_component(fund.get("per"), fund.get("eps"))
     pbr_c, pbr_reason = _pbr_component(fund.get("pbr"))
     eps_c = _eps_component(fund.get("eps"))
     div_c = _div_component(fund.get("dividend_yield"))
+    roe_c, roe_reason = _roe_component(fund.get("roe"))
 
-    weighted = 0.45 * per_c + 0.30 * pbr_c + 0.15 * eps_c + 0.10 * div_c
+    roe = fund.get("roe")
+    if roe is not None:
+        # ROE 있으면 5지표 가중: PER 35%, PBR 25%, ROE 20%, EPS 12%, 배당 8%
+        weighted = 0.35 * per_c + 0.25 * pbr_c + 0.20 * roe_c + 0.12 * eps_c + 0.08 * div_c
+    else:
+        # ROE 없으면 4지표 가중 유지: PER 45%, PBR 30%, EPS 15%, 배당 10%
+        weighted = 0.45 * per_c + 0.30 * pbr_c + 0.15 * eps_c + 0.10 * div_c
     score = round(weighted * 5.0, 1)
 
     is_loss = fund.get("eps") is not None and fund["eps"] <= 0
@@ -129,6 +154,8 @@ def score_financials(fund: dict) -> dict:
         grade = "위험"
 
     reasons = [per_reason, pbr_reason]
+    if roe is not None:
+        reasons.append(roe_reason)
     if is_loss:
         reasons.append("적자 기업 — 투자 주의")
 
@@ -145,6 +172,7 @@ def score_financials(fund: dict) -> dict:
             "eps": fund.get("eps"),
             "bps": fund.get("bps"),
             "dividend_yield": fund.get("dividend_yield"),
+            "roe": fund.get("roe"),
         },
     }
 

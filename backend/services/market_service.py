@@ -32,7 +32,7 @@ def _last_trading_day() -> str:
 
 
 async def get_ohlcv_from_pykrx(code: str, period: str, interval: str) -> list[dict]:
-    period_days = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "1y": 365, "2y": 730, "3y": 1095}
+    period_days = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "1y": 365, "2y": 730, "3y": 1095, "5y": 1825}
     # pykrx는 d/m만 지원. week는 일봉 fetch 후 resample.
     pykrx_freq = "m" if interval == "month" else "d"
 

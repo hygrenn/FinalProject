@@ -40,7 +40,7 @@ async def get_indices(request: Request):
 async def get_stock_chart(
     request: Request,
     code: str,
-    period: str = Query("1y", pattern="^(1d|1w|1m|3m|1y|2y)$"),
+    period: str = Query("1y", pattern="^(1d|1w|1m|3m|1y|2y|3y|5y)$"),
     interval: str = Query("day", pattern="^(1min|5min|15min|1h|day|week|month)$"),
 ):
     if interval in _INTRADAY_INTERVALS:
