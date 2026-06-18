@@ -25,7 +25,7 @@ async def get_ai_ranking(limit: int = 50) -> dict:
 async def get_recommendations(limit: int = 20) -> dict:
     """BUY 추천 + SELL 경고 종목 반환 (공유 캐시 활용, 5분 캐시)."""
     redis = await get_redis()
-    cache_key = f"recommendations_v2:{limit}"
+    cache_key = f"recommendations_v3:{limit}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
@@ -36,6 +36,7 @@ async def get_recommendations(limit: int = 20) -> dict:
 
     buy_picks = []
     sell_picks = []
+    surge_alerts = []
 
     for item in all_data:
         sig = item.get("signal")
@@ -51,15 +52,28 @@ async def get_recommendations(limit: int = 20) -> dict:
             # SELL 신호는 재무 무관하게 경고 표시
             sell_picks.append({**item, "market_caution": caution})
 
+        if item.get("surge_detected"):
+            surge_alerts.append({
+                "code": item["code"],
+                "name": item["name"],
+                "surge_reason": item.get("surge_reason"),
+                "price_change_pct": item.get("price_change_pct"),
+                "volume_ratio": item.get("volume_ratio"),
+                "signal": sig,
+            })
+
     buy_picks.sort(key=lambda x: (x["signal_score"], x.get("financial_score") or 0), reverse=True)
     sell_picks.sort(key=lambda x: x["signal_score"])  # 점수 낮은 순 (가장 강한 SELL 먼저)
+    surge_alerts.sort(key=lambda x: x.get("price_change_pct") or 0, reverse=True)
 
     result = {
         "picks": buy_picks[:limit],
         "sell_warnings": sell_picks[:limit],
+        "surge_alerts": surge_alerts[:10],
         "scanned": len(all_data),
         "buy_count": len(buy_picks),
         "sell_count": len(sell_picks),
+        "surge_count": len(surge_alerts),
         "market_trend": index_ctx.get("trend"),
         "market_caution": caution,
     }

@@ -12,12 +12,23 @@ interface Pick {
   market_caution: boolean
 }
 
+interface SurgeAlert {
+  code: string
+  name: string
+  surge_reason: string | null
+  price_change_pct: number | null
+  volume_ratio: number | null
+  signal: string | null
+}
+
 interface RecommendationResponse {
   picks: Pick[]
   sell_warnings: Pick[]
+  surge_alerts: SurgeAlert[]
   scanned: number
   buy_count: number
   sell_count: number
+  surge_count: number
   market_trend: string
   market_caution: boolean
 }
@@ -57,6 +68,34 @@ export function RecommendationPanel() {
         <div className="text-[11px] text-muted-foreground mb-2">
           {data.scanned}종목 스캔 · BUY {data.buy_count}개 · SELL {data.sell_count}개
           {data.market_caution && <span className="text-red-400"> · ⚠ 시장 하락 주의</span>}
+        </div>
+      )}
+
+      {/* 급등 감지 알림 */}
+      {!loading && data && data.surge_alerts && data.surge_alerts.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[11px] font-semibold text-orange-400 mb-1">
+            급등 감지 ({data.surge_count ?? data.surge_alerts.length})
+          </div>
+          <ul className="space-y-1">
+            {data.surge_alerts.map((a) => (
+              <li
+                key={a.code}
+                onClick={() => setSelectedStock({ code: a.code, name: a.name })}
+                className="flex items-start justify-between gap-2 cursor-pointer rounded px-2 py-1.5 hover:bg-accent border border-orange-400/20 bg-orange-400/5"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-medium truncate">{a.name}</div>
+                  <div className="text-[10px] text-orange-300/80 truncate">{a.surge_reason ?? '-'}</div>
+                </div>
+                {a.price_change_pct != null && (
+                  <div className="text-xs font-semibold text-orange-400 shrink-0">
+                    +{a.price_change_pct.toFixed(1)}%
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
