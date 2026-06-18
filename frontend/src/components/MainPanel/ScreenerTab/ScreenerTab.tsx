@@ -33,6 +33,8 @@ interface Filters {
   max_pbr: string
   min_roe: string
   exclude_risk: boolean
+  foreign_net_buy: boolean
+  institution_net_buy: boolean
   sort_by: 'signal_score' | 'financial_score' | 'per' | 'pbr'
 }
 
@@ -44,6 +46,8 @@ const DEFAULT_FILTERS: Filters = {
   max_pbr: '',
   min_roe: '',
   exclude_risk: false,
+  foreign_net_buy: false,
+  institution_net_buy: false,
   sort_by: 'signal_score',
 }
 
@@ -139,6 +143,8 @@ export function ScreenerTab() {
       if (filters.max_per) params.max_per = filters.max_per
       if (filters.max_pbr) params.max_pbr = filters.max_pbr
       if (filters.min_roe) params.min_roe = filters.min_roe
+      if (filters.foreign_net_buy) params.foreign_net_buy = 'true'
+      if (filters.institution_net_buy) params.institution_net_buy = 'true'
 
       const { data: res } = await api.get<ScreenerResponse>('/analysis/screener', { params })
       setData(res)
@@ -232,6 +238,30 @@ export function ScreenerTab() {
           <span className="text-xs">재무 위험 종목 제외</span>
         </label>
 
+        <div>
+          <div className="text-[11px] text-muted-foreground mb-1">투자자 동향 <span className="text-[10px] opacity-60">(느릴 수 있음)</span></div>
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.foreign_net_buy}
+                onChange={(e) => setFilters((f) => ({ ...f, foreign_net_buy: e.target.checked }))}
+                className="w-3 h-3 accent-blue-400"
+              />
+              <span className="text-xs text-blue-400">외국인 5일 순매수</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.institution_net_buy}
+                onChange={(e) => setFilters((f) => ({ ...f, institution_net_buy: e.target.checked }))}
+                className="w-3 h-3 accent-violet-400"
+              />
+              <span className="text-xs text-violet-400">기관 5일 순매수</span>
+            </label>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-1.5 mt-auto pt-2">
           <button
             onClick={handleSearch}
@@ -267,7 +297,12 @@ export function ScreenerTab() {
         {loading && (
           <div className="text-xs text-muted-foreground text-center py-12 space-y-2">
             <div>전체 종목 스캔 중…</div>
-            <div className="text-[11px]">첫 번째 검색은 30-60초 소요됩니다.<br/>이후에는 캐시로 즉시 응답합니다.</div>
+            <div className="text-[11px]">
+              {(filters.foreign_net_buy || filters.institution_net_buy)
+                ? '투자자 동향 필터 적용 중 — 추가 시간이 소요됩니다.'
+                : '첫 번째 검색은 30-60초 소요됩니다.\n이후에는 캐시로 즉시 응답합니다.'
+              }
+            </div>
           </div>
         )}
 

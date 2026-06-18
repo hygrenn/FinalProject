@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import comprehensive_service, fundamental_service, market_index_service, recommend_service, screener_service, stock_data_service
+from services import comprehensive_service, fundamental_service, investor_service, market_index_service, recommend_service, screener_service, stock_data_service
 
 router = APIRouter()
 
@@ -55,6 +55,13 @@ async def warmup_cache(request: Request):
     return {"status": "warming up"}
 
 
+@router.get("/investor/{code}")
+@limiter.limit("60/minute")
+async def get_investor_trend(request: Request, code: str, days: int = Query(default=10, ge=5, le=30)):
+    """종목별 외국인·기관·개인 순매수 동향 (최근 N거래일)."""
+    return await investor_service.get_investor_trend(code, days)
+
+
 @router.get("/screener")
 @limiter.limit("5/minute")
 async def run_screener(
@@ -66,6 +73,8 @@ async def run_screener(
     max_pbr: float | None = Query(default=None, ge=0),
     min_roe: float | None = Query(default=None),
     exclude_risk: bool = Query(default=False),
+    foreign_net_buy: bool = Query(default=False, description="외국인 5일 순매수 종목만"),
+    institution_net_buy: bool = Query(default=False, description="기관 5일 순매수 종목만"),
     sort_by: str = Query(default="signal_score", pattern="^(signal_score|financial_score|per|pbr)$"),
     limit: int = Query(default=50, ge=1, le=100),
 ):
@@ -80,6 +89,8 @@ async def run_screener(
         max_pbr=max_pbr,
         min_roe=min_roe,
         exclude_risk=exclude_risk,
+        foreign_net_buy=foreign_net_buy,
+        institution_net_buy=institution_net_buy,
         sort_by=sort_by,
         limit=limit,
     )

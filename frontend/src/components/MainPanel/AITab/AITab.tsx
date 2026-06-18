@@ -9,6 +9,7 @@ import { MultiframePanel } from './MultiframePanel'
 import { FundamentalPanel } from '@/components/Analysis/FundamentalPanel'
 import { RecommendationPanel } from '@/components/Analysis/RecommendationPanel'
 import { ComprehensivePanel } from '@/components/Analysis/ComprehensivePanel'
+import { InvestorPanel } from '@/components/Analysis/InvestorPanel'
 
 // 백엔드 /ai/{code}/signal 응답 — signal_breakdown으로 점수를 감싸서 반환한다.
 interface SignalResponse {
@@ -113,6 +114,7 @@ export function AITab() {
         <div className="space-y-4">
           <ComprehensivePanel />
           <FundamentalPanel />
+          <InvestorPanel />
           <RecommendationPanel />
         </div>
       </div>
