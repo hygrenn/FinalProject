@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, get_optional_user
 from api.middleware.rate_limit import limiter
 from models.backtest import BacktestResult
 from models.user import User
@@ -65,7 +65,7 @@ def _serialize_result(r: BacktestResult) -> dict:
 async def run_backtest(
     request: Request,
     body: BacktestRequest,
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     config = BacktestConfig(
@@ -79,7 +79,7 @@ async def run_backtest(
         take_profit_pct=body.take_profit_pct,
         commission_rate=body.commission_rate,
     )
-    result = await backtest_service.run_backtest(config, user.id, db)
+    result = await backtest_service.run_backtest(config, user.id if user else None, db)
     return _serialize_result(result)
 
 

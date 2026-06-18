@@ -1,5 +1,6 @@
 // frontend/src/store/stockStore.ts
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { Stock, RealtimePrice } from '@/types'
 import { MOCK_STOCKS, MOCK_WATCHLIST } from '@/lib/mockData'
 import api from '@/lib/api'
@@ -17,7 +18,9 @@ interface StockState {
   searchStocks: (q: string) => Promise<Stock[]>
 }
 
-export const useStockStore = create<StockState>((set) => ({
+export const useStockStore = create<StockState>()(
+  persist(
+    (set) => ({
   selectedStock: MOCK_STOCKS[0],
   watchlist: MOCK_WATCHLIST,
   stockList: MOCK_STOCKS,
@@ -69,4 +72,10 @@ export const useStockStore = create<StockState>((set) => ({
       return []
     }
   },
-}))
+    }),
+    {
+      name: 'stocksense-watchlist',
+      partialize: (state) => ({ watchlist: state.watchlist }),
+    }
+  )
+)

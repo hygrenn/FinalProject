@@ -10,6 +10,25 @@ from core.security import decode_access_token
 from models.user import User
 
 bearer_scheme = HTTPBearer()
+_bearer_optional = HTTPBearer(auto_error=False)
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_optional),
+    db: AsyncSession = Depends(get_db),
+) -> "User | None":
+    """토큰 없으면 None 반환 (데모/비로그인 허용)."""
+    if not credentials:
+        return None
+    user_id = decode_access_token(credentials.credentials)
+    if not user_id:
+        return None
+    try:
+        user_uuid = _uuid.UUID(user_id)
+    except ValueError:
+        return None
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    return result.scalar_one_or_none()
 
 
 async def get_current_user(

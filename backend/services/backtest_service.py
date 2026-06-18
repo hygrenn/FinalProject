@@ -265,7 +265,8 @@ async def run_backtest(
         total_trades=len(trades_log),
         result_detail=result_detail,
     )
-    db.add(result)
-    await db.commit()
-    await db.refresh(result)
+    if user_id is not None:
+        db.add(result)
+        await db.commit()
+        await db.refresh(result)
     return result

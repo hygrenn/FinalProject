@@ -95,10 +95,14 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="이미 등록된 이메일입니다")
 
-    user = User(email=body.email, password_hash=hash_password(body.password))
+    # SENDGRID 미설정(로컬 개발) 시 이메일 인증 생략하고 바로 활성화
+    auto_verify = not settings.SENDGRID_API_KEY
+    user = User(email=body.email, password_hash=hash_password(body.password), is_verified=auto_verify)
     db.add(user)
     await db.commit()
 
+    if auto_verify:
+        return {"message": "회원가입이 완료됐습니다. 바로 로그인하세요."}
     await send_verification_email(body.email)
     return {"message": "인증 이메일을 발송했습니다"}
 

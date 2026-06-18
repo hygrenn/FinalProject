@@ -18,6 +18,7 @@ export function RegisterModal({ open, onClose, onLogin }: RegisterModalProps) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
+  const [doneMsg, setDoneMsg] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,10 +29,12 @@ export function RegisterModal({ open, onClose, onLogin }: RegisterModalProps) {
     }
     setLoading(true)
     try {
-      await api.post('/auth/register', { email, password })
+      const { data } = await api.post<{ message: string }>('/auth/register', { email, password })
+      setDoneMsg(data.message ?? '가입이 완료됐습니다.')
       setDone(true)
-    } catch {
-      setError('회원가입에 실패했습니다. 다시 시도해주세요.')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail ?? '회원가입에 실패했습니다. 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
@@ -45,9 +48,7 @@ export function RegisterModal({ open, onClose, onLogin }: RegisterModalProps) {
         </DialogHeader>
         {done ? (
           <div className="space-y-3 text-center">
-            <p className="text-sm text-muted-foreground">
-              이메일 인증 링크를 발송했습니다. 확인 후 로그인해주세요.
-            </p>
+            <p className="text-sm text-muted-foreground">{doneMsg}</p>
             <Button className="w-full" onClick={onLogin}>로그인으로 이동</Button>
           </div>
         ) : (
