@@ -21,6 +21,51 @@ from services.market_service import _build_ticker_cache
 _CONCURRENCY = 8
 
 
+async def _score_ai_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
+    """AI 점수만 조회 (재무 필터 없음)."""
+    code = item["code"]
+    async with sem:
+        try:
+            signal = await ai_service.get_signal(code)
+        except Exception:
+            return None
+    breakdown = signal.get("signal_breakdown") or {}
+    return {
+        "code": code,
+        "name": item.get("name", code),
+        "signal": signal.get("signal"),
+        "signal_score": signal.get("signal_score", 0),
+        "tech_score": breakdown.get("technical_score"),
+        "lstm_score": breakdown.get("lstm_score"),
+        "lstm_available": signal.get("lstm_available", False),
+    }
+
+
+async def get_ai_ranking(limit: int = 50) -> dict:
+    """top100 전체를 AI 점수만으로 정렬 (재무 필터 없음, 캐시 5분)."""
+    redis = await get_redis()
+    cache_key = f"ai_ranking:{limit}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    tickers = await asyncio.to_thread(_build_ticker_cache, "KOSPI")
+    sem = asyncio.Semaphore(_CONCURRENCY)
+    results = await asyncio.gather(*[_score_ai_one(t, sem) for t in tickers])
+    ranked = sorted(
+        [r for r in results if r],
+        key=lambda x: x["signal_score"],
+        reverse=True,
+    )
+    result = {
+        "ranking": ranked[:limit],
+        "scanned": len(tickers),
+        "total": len(ranked),
+    }
+    await redis.setex(cache_key, 300, json.dumps(result))
+    return result
+
+
 async def _evaluate_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
     code = item["code"]
     async with sem:

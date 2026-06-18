@@ -37,3 +37,10 @@ async def get_indices(request: Request):
 async def get_comprehensive(request: Request, code: str):
     """AI 시그널 + 재무 평가 + 시장 지수 → 종합 판단 (0-10점)."""
     return await comprehensive_service.get_comprehensive(code)
+
+
+@router.get("/ai-ranking")
+@limiter.limit("10/minute")
+async def get_ai_ranking(request: Request, limit: int = Query(50, ge=1, le=100)):
+    """top100 전체를 AI 점수만으로 정렬한 순위 (재무 필터 없음)."""
+    return await recommend_service.get_ai_ranking(limit)

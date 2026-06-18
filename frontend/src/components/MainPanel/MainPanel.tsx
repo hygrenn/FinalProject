@@ -4,12 +4,14 @@ import { AITab } from './AITab/AITab'
 import { PortfolioTab } from './PortfolioTab/PortfolioTab'
 import { SimulatorTab } from './SimulatorTab/SimulatorTab'
 import { BacktestTab } from './BacktestTab/BacktestTab'
+import { RecommendTab } from './RecommendTab/RecommendTab'
 import { cn } from '@/lib/utils'
 import type { TabId } from '@/types'
 
 const ALL_TABS: { id: TabId; label: string }[] = [
   { id: 'chart', label: '차트' },
   { id: 'ai', label: 'AI' },
+  { id: 'recommend', label: '추천' },
   { id: 'simulator', label: '시뮬' },
   { id: 'portfolio', label: '포트폴리오' },
   { id: 'screener', label: '스크리너' },
@@ -46,12 +48,13 @@ export function MainPanel() {
         ))}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === 'chart'     && <ChartTab />}
-        {activeTab === 'ai'        && <AITab />}
-        {activeTab === 'simulator' && <SimulatorTab />}
-        {activeTab === 'portfolio' && <PortfolioTab />}
-        {activeTab === 'screener'  && <PlaceholderTab name="스크리너" />}
-        {activeTab === 'backtest'  && <BacktestTab />}
+        {activeTab === 'chart'      && <ChartTab />}
+        {activeTab === 'ai'         && <AITab />}
+        {activeTab === 'recommend'  && <RecommendTab />}
+        {activeTab === 'simulator'  && <SimulatorTab />}
+        {activeTab === 'portfolio'  && <PortfolioTab />}
+        {activeTab === 'screener'   && <PlaceholderTab name="스크리너" />}
+        {activeTab === 'backtest'   && <BacktestTab />}
       </div>
     </div>
   )
