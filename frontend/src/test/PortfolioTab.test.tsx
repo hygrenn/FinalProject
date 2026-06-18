@@ -10,6 +10,8 @@ vi.mock('@/lib/api', () => ({
         total_eval: 5290000,
         total_cost: 5000000,
         total_return_pct: 5.8,
+        holding_source: 'KIS 모의투자 계좌',
+        performance_source: '앱 거래 기록 기준',
       }})
       if (url === '/portfolio/metrics') return Promise.resolve({ data: { total_trades: 24, win_rate_pct: 62.5, sharpe_ratio: 1.23, mdd_pct: 3.2 } })
       if (url === '/portfolio/performance') return Promise.resolve({ data: [] })
@@ -32,5 +34,11 @@ describe('PortfolioTab', () => {
   it('renders holding stock names', async () => {
     render(<PortfolioTab />)
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument())
+  })
+
+  it('renders data source labels', async () => {
+    render(<PortfolioTab />)
+    await waitFor(() => expect(screen.getByText('KIS 모의투자 계좌')).toBeInTheDocument())
+    expect(screen.getByText('앱 거래 기록 기준')).toBeInTheDocument()
   })
 })

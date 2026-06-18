@@ -23,6 +23,16 @@ def _intraday_unix(date_str: str, time_str: str) -> int:
         return 0
 
 
+def _intraday_query_time(now_kst: datetime) -> str:
+    """KIS 당일분봉 조회 기준 시간을 정규장 범위로 보정한다."""
+    hhmmss = now_kst.strftime("%H%M%S")
+    if hhmmss < "090000":
+        return "090000"
+    if hhmmss > "153000":
+        return "153000"
+    return hhmmss
+
+
 _REAL_BASE = "https://openapi.koreainvestment.com:9443"
 _PAPER_BASE = "https://openapivts.koreainvestment.com:29443"
 
@@ -156,7 +166,7 @@ async def _get_1min_records_cached(code: str) -> list[dict]:
     today_str = now_kst.strftime("%Y%m%d")
     all_rows: list[dict] = []
     seen_times: set[str] = set()
-    query_time = now_kst.strftime("%H%M%S")
+    query_time = _intraday_query_time(now_kst)
 
     import asyncio as _asyncio
     async with httpx.AsyncClient(timeout=10.0) as client:

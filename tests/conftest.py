@@ -3,13 +3,28 @@ import os
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 os.environ["APP_ENV"] = "test"
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+asyncpg://stocksense:stocksense@localhost:5432/stocksense_test",
-)
+
+
+def _test_database_url() -> str:
+    explicit = os.environ.get("TEST_DATABASE_URL")
+    source = explicit or os.environ.get(
+        "DATABASE_URL",
+        "postgresql+asyncpg://stocksense:stocksense@localhost:5432/stocksense_test",
+    )
+    url = make_url(source)
+    database = url.database or "stocksense"
+    if not database.endswith("_test"):
+        url = url.set(database=f"{database}_test")
+    if not (url.database or "").endswith("_test"):
+        raise RuntimeError(f"Refusing to run tests against non-test database: {url.database}")
+    return str(url)
+
+
+os.environ["DATABASE_URL"] = _test_database_url()
 
 from api.middleware.rate_limit import limiter  # noqa: E402
 from core.database import Base, get_db  # noqa: E402

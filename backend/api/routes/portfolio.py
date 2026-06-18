@@ -14,7 +14,7 @@ from core.config import settings
 from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
-from services import kis_service
+from services import kis_account_service
 from services.market_service import get_stock_current_price
 
 router = APIRouter()
@@ -27,6 +27,22 @@ async def _get_holdings(user_id, mode: str, db: AsyncSession) -> list:
     return result.scalars().all()
 
 
+def _portfolio_from_kis_balance(kis_data: dict) -> dict:
+    summary = kis_data.get("summary", {})
+    total_eval = int(summary.get("eval_amount", 0))
+    total_cost = int(summary.get("buy_amount", 0))
+    return {
+        "holdings": kis_data.get("holdings", []),
+        "total_eval": total_eval,
+        "total_cost": total_cost,
+        "total_return_pct": float(summary.get("return_pct", 0)),
+        "total_asset": int(summary.get("total_asset", total_eval)),
+        "deposit": int(summary.get("deposit", 0)),
+        "holding_source": kis_data.get("data_source", "KIS 계좌 잔고"),
+        "performance_source": "앱 거래 기록 기준",
+    }
+
+
 @router.get("")
 @limiter.limit("60/minute")
 async def get_portfolio(
@@ -34,26 +50,19 @@ async def get_portfolio(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    mode = settings.SYSTEM_KIS_MODE
-    # real 모드: KIS API에서 정확한 잔고/평균단가 조회
-    if mode == "real":
-        try:
-            kis_data = await kis_service.get_balance_full(user)
-            total_eval = kis_data["total_eval"]
-            total_cost = kis_data["total_cost"]
-            total_return_pct = ((total_eval - total_cost) / total_cost * 100) if total_cost > 0 else 0
-            return {
-                "holdings": kis_data["holdings"],
-                "total_eval": total_eval,
-                "total_cost": total_cost,
-                "total_return_pct": round(total_return_pct, 2),
-            }
-        except HTTPException as exc:
-            if exc.status_code != 400:
-                raise  # 502(KIS 장애), 401(인증 오류) 등은 그대로 전파
-            # 400 = KIS 키 미설정 → DB fallback
+    return await _get_portfolio_response(user, db)
 
-    # paper 모드 또는 KIS 키 미설정 시 DB 기반 계산
+
+async def _get_portfolio_response(user: User, db: AsyncSession) -> dict:
+    mode = settings.SYSTEM_KIS_MODE
+    try:
+        kis_data = await kis_account_service.get_account_balance(mode)
+        return _portfolio_from_kis_balance(kis_data)
+    except HTTPException:
+        # KIS 잔고 조회가 불가능한 개발/오프라인 상황에서는 앱 DB 기록으로 fallback한다.
+        pass
+
+    # KIS 조회 실패 시 DB 기반 계산
     holdings = await _get_holdings(user.id, mode, db)
     result = []
     total_eval = 0
@@ -85,6 +94,10 @@ async def get_portfolio(
         "total_eval": total_eval,
         "total_cost": total_cost,
         "total_return_pct": round(total_return_pct, 2),
+        "total_asset": total_eval,
+        "deposit": 0,
+        "holding_source": "앱 DB 포트폴리오 fallback",
+        "performance_source": "앱 거래 기록 기준",
     }
 
 
