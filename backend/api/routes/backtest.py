@@ -12,7 +12,7 @@ from api.middleware.rate_limit import limiter
 from models.backtest import BacktestResult
 from models.user import User
 from services import backtest_service
-from services.backtest_service import BacktestConfig
+from services.backtest_service import BacktestConfig, PortfolioStock
 
 router = APIRouter()
 
@@ -58,6 +58,62 @@ def _serialize_result(r: BacktestResult) -> dict:
         "result_detail": r.result_detail,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     }
+
+
+class PortfolioStockItem(BaseModel):
+    code: str
+    name: str
+    weight_pct: float = Field(gt=0, le=100)
+
+
+class PortfolioBacktestRequest(BaseModel):
+    stocks: list[PortfolioStockItem] = Field(min_length=1, max_length=10)
+    start_date: date
+    end_date: date
+    initial_cash: int = Field(default=10_000_000, gt=0)
+    entry_signal_score: float = Field(default=65.0, ge=0, le=100)
+    exit_signal_score: float = Field(default=35.0, ge=0, le=100)
+    stop_loss_pct: float = Field(default=0.05, ge=0, le=1)
+    take_profit_pct: float = Field(default=0.15, ge=0, le=1)
+    commission_rate: float = Field(default=0.00015, ge=0, le=0.01)
+
+    @field_validator("end_date")
+    @classmethod
+    def end_after_start(cls, v, info):
+        start = info.data.get("start_date")
+        if start and v <= start:
+            raise ValueError("end_date must be after start_date")
+        return v
+
+    @model_validator(mode="after")
+    def validate_weights(self) -> "PortfolioBacktestRequest":
+        total = sum(s.weight_pct for s in self.stocks)
+        if abs(total - 100.0) > 0.1:
+            raise ValueError(f"비중 합계는 100%여야 합니다. 현재: {total:.1f}%")
+        if self.entry_signal_score <= self.exit_signal_score:
+            raise ValueError("entry_signal_score는 exit_signal_score보다 커야 합니다.")
+        return self
+
+
+@router.post("/portfolio-run")
+@limiter.limit("3/minute")
+async def run_portfolio_backtest(
+    request: Request,
+    body: PortfolioBacktestRequest,
+    user: User | None = Depends(get_optional_user),
+):
+    ps_list = [PortfolioStock(code=s.code, name=s.name, weight_pct=s.weight_pct) for s in body.stocks]
+    return await backtest_service.run_portfolio_backtest(
+        stocks=ps_list,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        initial_cash=body.initial_cash,
+        entry_signal_score=body.entry_signal_score,
+        exit_signal_score=body.exit_signal_score,
+        stop_loss_pct=body.stop_loss_pct,
+        take_profit_pct=body.take_profit_pct,
+        commission_rate=body.commission_rate,
+    )
 
 
 @router.post("/run")

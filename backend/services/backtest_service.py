@@ -203,6 +203,112 @@ def _compute_metrics(
     }
 
 
+@dataclass
+class PortfolioStock:
+    code: str
+    name: str
+    weight_pct: float  # 0-100
+
+
+async def run_portfolio_backtest(
+    stocks: list[PortfolioStock],
+    start_date: date,
+    end_date: date,
+    initial_cash: int = 10_000_000,
+    entry_signal_score: float = 65.0,
+    exit_signal_score: float = 35.0,
+    stop_loss_pct: float = 0.05,
+    take_profit_pct: float = 0.15,
+    commission_rate: float = 0.00015,
+) -> dict:
+    """종목별 독립 백테스트 → 일별 자산 합산 → 포트폴리오 지표 반환."""
+    import asyncio
+
+    async def _run_one(ps: PortfolioStock) -> dict | None:
+        allocated = int(initial_cash * ps.weight_pct / 100)
+        if allocated <= 0:
+            return None
+        config = BacktestConfig(
+            code=ps.code,
+            start_date=start_date,
+            end_date=end_date,
+            initial_cash=allocated,
+            entry_signal_score=entry_signal_score,
+            exit_signal_score=exit_signal_score,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            commission_rate=commission_rate,
+        )
+        try:
+            df = await asyncio.to_thread(_fetch_ohlcv, ps.code, start_date, end_date)
+        except Exception:
+            return None
+        if df.empty:
+            return None
+        daily = _compute_daily_scores(df)
+        if not daily:
+            return None
+        trades_log, equity_curve, _ = _simulate(daily, config)
+        metrics = _compute_metrics(equity_curve, trades_log, allocated)
+        dates = [d[0] for d in daily]
+        return {
+            "code": ps.code,
+            "name": ps.name,
+            "weight_pct": ps.weight_pct,
+            "allocated_cash": allocated,
+            "total_return_pct": metrics["total_return_pct"],
+            "total_trades": len(trades_log),
+            "equity_curve": equity_curve,
+            "dates": dates,
+        }
+
+    results = await asyncio.gather(*[_run_one(ps) for ps in stocks])
+    valid = [r for r in results if r is not None]
+
+    if not valid:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="유효한 종목 데이터가 없습니다.")
+
+    # 날짜 기준 정렬 후 가장 짧은 equity_curve 길이 기준으로 맞춤
+    min_len = min(len(r["equity_curve"]) for r in valid)
+    combined_equity = [
+        sum(r["equity_curve"][i] for r in valid)
+        for i in range(min_len)
+    ]
+    # 대표 dates: 첫 번째 유효 종목 기준
+    dates = valid[0]["dates"][:min_len]
+
+    # 합산 trades_log 재구성 (MDD·샤프 계산용)
+    portfolio_metrics = _compute_metrics(combined_equity, [], initial_cash)
+
+    equity_with_dates = [
+        {"date": dates[i], "equity": round(combined_equity[i])}
+        for i in range(0, min_len, max(1, min_len // 200))
+    ]
+
+    per_stock = [
+        {
+            "code": r["code"],
+            "name": r["name"],
+            "weight_pct": r["weight_pct"],
+            "allocated_cash": r["allocated_cash"],
+            "total_return_pct": r["total_return_pct"],
+            "total_trades": r["total_trades"],
+        }
+        for r in valid
+    ]
+
+    return {
+        "portfolio_metrics": portfolio_metrics,
+        "per_stock": per_stock,
+        "equity_curve": equity_with_dates,
+        "period_start": str(start_date),
+        "period_end": str(end_date),
+        "initial_cash": initial_cash,
+        "stock_count": len(valid),
+    }
+
+
 async def run_backtest(
     config: BacktestConfig,
     user_id,
