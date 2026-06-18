@@ -1,122 +1,65 @@
-"""추천 종목 서비스 — 100종목 전체 스캔.
+"""추천 종목 서비스 — stock_data_service 공유 캐시 기반.
 
-기존 AI 시그널(ai_service.get_signal: 기술지표 + LSTM)을 그대로 활용하고,
-그 위에 '보조 필터'로 재무 평가와 시장 지수 추세를 얹는다.
-
-추천 규칙(사용자 정의 — 기존 점수 + 보조 필터):
-- 기존 AI 시그널이 BUY 인 종목만 후보로 삼는다.
-- 재무가 '위험'(fundamental.risk)인 종목은 제외한다.
-- 시장 지수가 하락 추세면 각 추천에 주의(caution) 플래그를 붙인다.
-- 시그널 점수 → 재무 점수 순으로 정렬해 상위를 반환한다.
+동료 피드백 반영: BUY 추천 + SELL 경고 종목 모두 반환.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 
 from core.redis_client import get_redis
-from services import ai_service, fundamental_service, market_index_service
-from services.market_service import _build_ticker_cache
-
-_CONCURRENCY = 8
-
-
-async def _score_ai_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
-    """AI 점수만 조회 (재무 필터 없음)."""
-    code = item["code"]
-    async with sem:
-        try:
-            signal = await ai_service.get_signal(code)
-        except Exception:
-            return None
-    breakdown = signal.get("signal_breakdown") or {}
-    return {
-        "code": code,
-        "name": item.get("name", code),
-        "signal": signal.get("signal"),
-        "signal_score": signal.get("signal_score", 0),
-        "tech_score": breakdown.get("technical_score"),
-        "lstm_score": breakdown.get("lstm_score"),
-        "lstm_available": signal.get("lstm_available", False),
-    }
+from services import market_index_service
+from services.stock_data_service import get_all_stock_data
 
 
 async def get_ai_ranking(limit: int = 50) -> dict:
-    """top100 전체를 AI 점수만으로 정렬 (재무 필터 없음, 캐시 5분)."""
-    redis = await get_redis()
-    cache_key = f"ai_ranking:{limit}"
-    cached = await redis.get(cache_key)
-    if cached:
-        return json.loads(cached)
-
-    tickers = await asyncio.to_thread(_build_ticker_cache, "KOSPI")
-    sem = asyncio.Semaphore(_CONCURRENCY)
-    results = await asyncio.gather(*[_score_ai_one(t, sem) for t in tickers])
-    ranked = sorted(
-        [r for r in results if r],
-        key=lambda x: x["signal_score"],
-        reverse=True,
-    )
-    result = {
-        "ranking": ranked[:limit],
-        "scanned": len(tickers),
-        "total": len(ranked),
-    }
-    await redis.setex(cache_key, 300, json.dumps(result))
-    return result
-
-
-async def _evaluate_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
-    code = item["code"]
-    async with sem:
-        try:
-            signal = await ai_service.get_signal(code)  # db 미전달 → 계산만(이력 저장 X)
-        except Exception:
-            return None
-    if signal.get("signal") != "BUY":
-        return None
-
-    fundamental = await fundamental_service.get_fundamental(code)
-    # 보조 필터: 재무가 위험이면 추천에서 제외.
-    if fundamental.get("available") and fundamental.get("risk"):
-        return None
-
+    """top100 전체를 AI 점수 순 정렬 (재무 필터 없음, 공유 캐시 활용)."""
+    all_data = await get_all_stock_data()
+    ranked = sorted(all_data, key=lambda x: x["signal_score"], reverse=True)
     return {
-        "code": code,
-        "name": item.get("name", code),
-        "signal": signal.get("signal"),
-        "signal_score": signal.get("signal_score", 0),
-        "financial_score": fundamental.get("score"),
-        "financial_grade": fundamental.get("grade"),
+        "ranking": ranked[:limit],
+        "scanned": len(all_data),
+        "total": len(ranked),
     }
 
 
 async def get_recommendations(limit: int = 20) -> dict:
-    """top100 전체를 스캔해 BUY 추천 종목을 반환(캐시 5분)."""
+    """BUY 추천 + SELL 경고 종목 반환 (공유 캐시 활용, 5분 캐시)."""
     redis = await get_redis()
-    cache_key = f"recommendations:{limit}"
+    cache_key = f"recommendations_v2:{limit}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
 
-    tickers = await asyncio.to_thread(_build_ticker_cache, "KOSPI")
+    all_data = await get_all_stock_data()
     index_ctx = await market_index_service.get_index_context()
-
-    sem = asyncio.Semaphore(_CONCURRENCY)
-    results = await asyncio.gather(*[_evaluate_one(t, sem) for t in tickers])
-    picks = [r for r in results if r]
-
     caution = index_ctx.get("trend") == "down"
-    for p in picks:
-        p["market_caution"] = caution
 
-    # 시그널 점수 → 재무 점수 순 정렬.
-    picks.sort(key=lambda x: (x["signal_score"], x.get("financial_score") or 0), reverse=True)
+    buy_picks = []
+    sell_picks = []
+
+    for item in all_data:
+        sig = item.get("signal")
+        risk = item.get("financial_risk")
+
+        if sig == "BUY":
+            # 재무 위험 종목은 BUY 추천에서 제외
+            if risk:
+                continue
+            buy_picks.append({**item, "market_caution": caution})
+
+        elif sig == "SELL":
+            # SELL 신호는 재무 무관하게 경고 표시
+            sell_picks.append({**item, "market_caution": caution})
+
+    buy_picks.sort(key=lambda x: (x["signal_score"], x.get("financial_score") or 0), reverse=True)
+    sell_picks.sort(key=lambda x: x["signal_score"])  # 점수 낮은 순 (가장 강한 SELL 먼저)
 
     result = {
-        "picks": picks[:limit],
-        "scanned": len(tickers),
-        "buy_count": len(picks),
+        "picks": buy_picks[:limit],
+        "sell_warnings": sell_picks[:limit],
+        "scanned": len(all_data),
+        "buy_count": len(buy_picks),
+        "sell_count": len(sell_picks),
         "market_trend": index_ctx.get("trend"),
         "market_caution": caution,
     }

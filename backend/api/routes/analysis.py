@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import comprehensive_service, fundamental_service, market_index_service, recommend_service, screener_service
+from services import comprehensive_service, fundamental_service, market_index_service, recommend_service, screener_service, stock_data_service
 
 router = APIRouter()
 
@@ -44,6 +44,15 @@ async def get_comprehensive(request: Request, code: str):
 async def get_ai_ranking(request: Request, limit: int = Query(50, ge=1, le=100)):
     """top100 전체를 AI 점수만으로 정렬한 순위 (재무 필터 없음)."""
     return await recommend_service.get_ai_ranking(limit)
+
+
+@router.post("/warmup")
+@limiter.limit("2/minute")
+async def warmup_cache(request: Request):
+    """스크리너/랭킹 공유 캐시를 강제 갱신 (백그라운드)."""
+    import asyncio
+    asyncio.create_task(stock_data_service.get_all_stock_data(force_refresh=True))
+    return {"status": "warming up"}
 
 
 @router.get("/screener")

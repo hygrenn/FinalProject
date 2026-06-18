@@ -265,8 +265,9 @@ export function ScreenerTab() {
         </div>
 
         {loading && (
-          <div className="text-xs text-muted-foreground text-center py-12">
-            전체 종목 스캔 중… (최대 1분 소요)
+          <div className="text-xs text-muted-foreground text-center py-12 space-y-2">
+            <div>전체 종목 스캔 중…</div>
+            <div className="text-[11px]">첫 번째 검색은 30-60초 소요됩니다.<br/>이후에는 캐시로 즉시 응답합니다.</div>
           </div>
         )}
 
