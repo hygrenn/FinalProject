@@ -410,7 +410,7 @@ export function BacktestTab() {
                       />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', fontSize: 11 }}
-                        formatter={(v: number) => [`${v.toLocaleString()}원`, '자산']}
+                        formatter={(v) => [`${Number(v ?? 0).toLocaleString()}원`, '자산']}
                       />
                       <Line type="monotone" dataKey="equity" stroke="hsl(var(--primary))" dot={false} strokeWidth={1.5} />
                     </LineChart>

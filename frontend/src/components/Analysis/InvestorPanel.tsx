@@ -137,7 +137,7 @@ export function InvestorPanel() {
                 />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', fontSize: 10 }}
-                  formatter={(v: number) => [`${v}억원`, activeLabel]}
+                  formatter={(v) => [`${Number(v ?? 0)}억원`, activeLabel]}
                 />
                 <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" />
                 <Bar

@@ -144,6 +144,10 @@ export interface PortfolioResponse {
   total_eval: number
   total_cost: number
   total_return_pct: number
+  total_asset?: number
+  deposit?: number
+  holding_source?: string
+  performance_source?: string
 }
 
 export interface RiskSettings {

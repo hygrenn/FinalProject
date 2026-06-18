@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
-import type { Holding, PortfolioMetrics } from '@/types'
+import type { Holding, PortfolioMetrics, PortfolioResponse } from '@/types'
 
 export function PortfolioTab() {
   const [holdings, setHoldings] = useState<Holding[]>([])
   const [totalEval, setTotalEval] = useState(0)
   const [totalReturnPct, setTotalReturnPct] = useState(0)
+  const [holdingSource, setHoldingSource] = useState('')
+  const [performanceSource, setPerformanceSource] = useState('')
   const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null)
   const [chartData, setChartData] = useState<{ date: string; value: number }[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,10 +22,12 @@ export function PortfolioTab() {
           api.get('/portfolio/metrics'),
           api.get('/portfolio/performance'),
         ])
-        const p = portfolioRes.data
+        const p = portfolioRes.data as PortfolioResponse
         setHoldings(p.holdings ?? [])
         setTotalEval(p.total_eval ?? 0)
         setTotalReturnPct(p.total_return_pct ?? 0)
+        setHoldingSource(p.holding_source ?? '')
+        setPerformanceSource(p.performance_source ?? '')
         setMetrics(metricsRes.data)
         // Convert daily PNL list to cumulative chart data
         const perf: { date: string; pnl: number }[] = perfRes.data ?? []
@@ -44,6 +48,22 @@ export function PortfolioTab() {
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
+      {/* 요약 카드 */}
+      {(holdingSource || performanceSource) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {holdingSource && (
+            <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
+              보유 현황: <span className="text-foreground">{holdingSource}</span>
+            </div>
+          )}
+          {performanceSource && (
+            <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
+              성과 지표: <span className="text-foreground">{performanceSource}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 요약 카드 */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-card border border-border rounded-lg p-3 text-center">

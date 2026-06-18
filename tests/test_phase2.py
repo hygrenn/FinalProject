@@ -161,6 +161,20 @@ async def test_get_intraday_ohlcv_returns_empty_when_no_system_key():
     assert result == []
 
 
+def test_intraday_query_time_is_clamped_to_regular_session():
+    """당일분봉 조회 기준 시간은 정규장 범위로 보정한다."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from services.kis_market_service import _intraday_query_time
+
+    kst = ZoneInfo("Asia/Seoul")
+
+    assert _intraday_query_time(datetime(2026, 6, 18, 8, 30, tzinfo=kst)) == "090000"
+    assert _intraday_query_time(datetime(2026, 6, 18, 10, 0, tzinfo=kst)) == "100000"
+    assert _intraday_query_time(datetime(2026, 6, 18, 23, 0, tzinfo=kst)) == "153000"
+
+
 @pytest.mark.asyncio
 async def test_get_recent_trades_returns_empty_when_no_system_key():
     """SYSTEM_KIS_APP_KEY가 없으면 빈 체결 목록을 반환한다."""
