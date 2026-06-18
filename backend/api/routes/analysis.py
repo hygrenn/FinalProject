@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import comprehensive_service, fundamental_service, investor_service, market_index_service, recommend_service, screener_service, stock_data_service
+from services import comprehensive_service, fundamental_service, investor_service, market_index_service, recommend_service, screener_service, sector_service, stock_data_service
 
 router = APIRouter()
 
@@ -53,6 +53,13 @@ async def warmup_cache(request: Request):
     import asyncio
     asyncio.create_task(stock_data_service.get_all_stock_data(force_refresh=True))
     return {"status": "warming up"}
+
+
+@router.get("/sector")
+@limiter.limit("10/minute")
+async def get_sector_heatmap(request: Request):
+    """KOSPI 업종별 등락률·시가총액·상위 종목 (섹터 히트맵용)."""
+    return await sector_service.get_sector_heatmap()
 
 
 @router.get("/investor/{code}")

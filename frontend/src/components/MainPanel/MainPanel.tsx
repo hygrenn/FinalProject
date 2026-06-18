@@ -6,6 +6,7 @@ import { SimulatorTab } from './SimulatorTab/SimulatorTab'
 import { BacktestTab } from './BacktestTab/BacktestTab'
 import { RecommendTab } from './RecommendTab/RecommendTab'
 import { ScreenerTab } from './ScreenerTab/ScreenerTab'
+import { MarketTab } from './MarketTab/MarketTab'
 import { cn } from '@/lib/utils'
 import type { TabId } from '@/types'
 
@@ -13,6 +14,7 @@ const ALL_TABS: { id: TabId; label: string }[] = [
   { id: 'chart', label: '차트' },
   { id: 'ai', label: 'AI' },
   { id: 'recommend', label: '추천' },
+  { id: 'market', label: '시장' },
   { id: 'simulator', label: '시뮬' },
   { id: 'portfolio', label: '포트폴리오' },
   { id: 'screener', label: '스크리너' },
@@ -48,6 +50,7 @@ export function MainPanel() {
         {activeTab === 'portfolio'  && <PortfolioTab />}
         {activeTab === 'screener'   && <ScreenerTab />}
         {activeTab === 'backtest'   && <BacktestTab />}
+        {activeTab === 'market'     && <MarketTab />}
       </div>
     </div>
   )

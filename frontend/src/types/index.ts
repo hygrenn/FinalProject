@@ -86,7 +86,7 @@ export interface LumpsumResult {
   chart_data: { date: string; return_pct: number }[]
 }
 
-export type TabId = 'chart' | 'ai' | 'simulator' | 'portfolio' | 'screener' | 'backtest' | 'recommend'
+export type TabId = 'chart' | 'ai' | 'simulator' | 'portfolio' | 'screener' | 'backtest' | 'recommend' | 'market'
 
 export interface Stock {
   code: string
