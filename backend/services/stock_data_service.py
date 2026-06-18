@@ -16,7 +16,7 @@ from core.redis_client import get_redis
 from services import ai_service, fundamental_service
 from services.market_service import _build_ticker_cache, get_ohlcv_cached
 
-_CACHE_KEY = "stock_data_cache:v3"
+_CACHE_KEY = "stock_data_cache:v4"
 _CACHE_TTL = 300   # 5분
 _CONCURRENCY = 20  # pykrx 병렬 한도
 
@@ -24,6 +24,36 @@ _CONCURRENCY = 20  # pykrx 병렬 한도
 _SURGE_PRICE_PCT   = 5.0   # 전일 대비 가격 변동 %
 _SURGE_VOL_RATIO   = 2.0   # 20일 평균 거래량 대비 배율
 _SURGE_VOL_WINDOW  = 20    # 거래량 평균 계산 구간 (일)
+
+
+def _calc_52w(raw_ohlcv: list[dict]) -> dict:
+    """1년치 OHLCV로 52주 신고가/신저가 브레이크아웃 감지."""
+    default = {
+        "w52_high": None,
+        "w52_low": None,
+        "high_breakout": False,
+        "near_high": False,
+        "w52_from_high_pct": None,
+    }
+    if len(raw_ohlcv) < 20:
+        return default
+
+    closes = [d["close"] for d in raw_ohlcv]
+    current = closes[-1]
+    hist = closes[:-1]  # 오늘 제외한 과거 52주 데이터
+
+    w52_high = max(hist)
+    w52_low  = min(hist)
+
+    from_high_pct = (current - w52_high) / w52_high * 100
+
+    return {
+        "w52_high": round(w52_high),
+        "w52_low":  round(w52_low),
+        "high_breakout": current >= w52_high,       # 52주 최고가 갱신
+        "near_high":     current >= w52_high * 0.97, # 3% 이내 근접
+        "w52_from_high_pct": round(from_high_pct, 2),
+    }
 
 
 def _calc_surge(raw_ohlcv: list[dict]) -> dict:
@@ -83,16 +113,21 @@ async def _fetch_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
             signal = await ai_service.get_signal(code)
         except Exception:
             return None
+        # 1y OHLCV: 52주 신고가용 — semaphore 안에서 pykrx 호출 제어
+        try:
+            raw_ohlcv_1y = await get_ohlcv_cached(code, "1y", "day")
+        except Exception:
+            raw_ohlcv_1y = []
 
     try:
         fund = await fundamental_service.get_fundamental(code)
     except Exception:
         fund = {"available": False}
 
-    # OHLCV는 ai_service.get_signal() 이 이미 캐시했으므로 Redis hit
+    # 3m OHLCV: ai_service.get_signal() 이 이미 캐시했으므로 Redis hit
     try:
-        raw_ohlcv = await get_ohlcv_cached(code, "3m", "day")
-        surge = _calc_surge(raw_ohlcv)
+        raw_ohlcv_3m = await get_ohlcv_cached(code, "3m", "day")
+        surge = _calc_surge(raw_ohlcv_3m)
     except Exception:
         surge = {
             "price_change_pct": None,
@@ -100,6 +135,8 @@ async def _fetch_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
             "surge_detected": False,
             "surge_reason": None,
         }
+
+    w52 = _calc_52w(raw_ohlcv_1y)
 
     breakdown = signal.get("signal_breakdown") or {}
     metrics = (fund.get("metrics") or {}) if fund.get("available") else {}
@@ -124,6 +161,8 @@ async def _fetch_one(item: dict, sem: asyncio.Semaphore) -> dict | None:
         "dividend_yield": metrics.get("dividend_yield"),
         # 급등 감지
         **surge,
+        # 52주 신고가
+        **w52,
     }
 
 

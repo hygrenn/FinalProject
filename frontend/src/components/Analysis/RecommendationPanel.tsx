@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStockStore } from '@/store/stockStore'
+import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
 interface Pick {
@@ -21,14 +22,25 @@ interface SurgeAlert {
   signal: string | null
 }
 
+interface HighBreakout {
+  code: string
+  name: string
+  w52_high: number | null
+  w52_from_high_pct: number | null
+  high_breakout: boolean
+  signal: string | null
+}
+
 interface RecommendationResponse {
   picks: Pick[]
   sell_warnings: Pick[]
   surge_alerts: SurgeAlert[]
+  high_breakouts: HighBreakout[]
   scanned: number
   buy_count: number
   sell_count: number
   surge_count: number
+  high_breakout_count: number
   market_trend: string
   market_caution: boolean
 }
@@ -91,6 +103,39 @@ export function RecommendationPanel() {
                 {a.price_change_pct != null && (
                   <div className="text-xs font-semibold text-orange-400 shrink-0">
                     +{a.price_change_pct.toFixed(1)}%
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 52주 신고가 알림 */}
+      {!loading && data && data.high_breakouts && data.high_breakouts.length > 0 && (
+        <div className="mb-3">
+          <div className="text-[11px] font-semibold text-yellow-400 mb-1">
+            52주 신고가 ({data.high_breakout_count ?? data.high_breakouts.length})
+          </div>
+          <ul className="space-y-1">
+            {data.high_breakouts.map((h) => (
+              <li
+                key={h.code}
+                onClick={() => setSelectedStock({ code: h.code, name: h.name })}
+                className="flex items-start justify-between gap-2 cursor-pointer rounded px-2 py-1.5 hover:bg-accent border border-yellow-400/20 bg-yellow-400/5"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-medium truncate">{h.name}</div>
+                  <div className="text-[10px] text-yellow-300/80 truncate">
+                    {h.high_breakout ? '신고가 갱신' : '신고가 근접'} · 52주고점 {h.w52_high?.toLocaleString()}원
+                  </div>
+                </div>
+                {h.w52_from_high_pct != null && (
+                  <div className={cn(
+                    'text-xs font-semibold shrink-0',
+                    h.high_breakout ? 'text-yellow-400' : 'text-yellow-300/60'
+                  )}>
+                    {h.w52_from_high_pct >= 0 ? '+' : ''}{h.w52_from_high_pct.toFixed(1)}%
                   </div>
                 )}
               </li>
