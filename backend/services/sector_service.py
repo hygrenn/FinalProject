@@ -1,88 +1,115 @@
 """업종(섹터) 히트맵 서비스.
 
-pykrx get_market_sector_classifications 를 사용해
-KOSPI 전 종목의 업종별 등락률·시가총액·상위 종목을 집계한다.
+Naver Finance 업종별 시세 페이지에서 HTML 스크래핑으로 데이터를 수집한다.
+KRX 로그인·API 키 불필요 (market_index_service 와 동일 방식).
+
+URL: https://finance.naver.com/sise/sise_group.nhn?type=upjong
+컬럼 순서: 업종명, 등락률, 종목수(전체), 상승, 보합, 하락
 """
 from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date, timedelta
+import re
+
+import httpx
 
 from core.redis_client import get_redis
 from services.market_service import _is_market_open, _last_trading_day
 
-_CACHE_KEY = "sector_heatmap:v1"
+_CACHE_KEY = "sector_heatmap:v3"
 _TTL_OPEN   = 300
 _TTL_CLOSED = 86400
 
+_NAVER_URL = "https://finance.naver.com/sise/sise_group.nhn?type=upjong"
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    "Accept-Language": "ko-KR,ko;q=0.9",
+}
 
-def _fetch_sector_raw(date_str: str) -> list[dict]:
-    """pykrx 동기 호출 — asyncio.to_thread 안에서 실행."""
-    from pykrx import stock as pykrx_stock
+# <tr> 블록에서 업종 데이터를 추출하는 패턴
+# 실제 HTML 구조:
+#   <a href="...no=NO">NAME</a>
+#   <span class="tah p11 red01/dn1/black03">\n+5.12%\n</span>
+#   <td class="number">172</td>  ← total
+#   <td class="number">38</td>   ← up
+#   <td class="number">4</td>    ← flat
+#   <td class="number">130</td>  ← down
+_ROW_RE = re.compile(
+    r'no=(\d+)[^>]*>([^<]+)</a>'                       # group 1=no, 2=name
+    r'.*?'
+    r'class="tah p11[^"]*">\s*([-+]?\d+\.?\d*)\s*%'   # group 3=change_pct
+    r'.*?'
+    r'class="number">(\d+)</td>'                        # group 4=total
+    r'.*?'
+    r'class="number">(\d+)</td>'                        # group 5=up
+    r'.*?'
+    r'class="number">(\d+)</td>'                        # group 6=flat
+    r'.*?'
+    r'class="number">(\d+)</td>',                       # group 7=down
+    re.DOTALL,
+)
 
+# 일부 업종은 너무 세분화돼 있어 주요 업종만 추출.
+# 목록이 없으면 전체 반환.
+_MAJOR_SECTORS = {
+    "반도체와반도체장비", "전자장비와기기", "컴퓨터와주변기기",
+    "자동차와부품", "화학", "의약품", "제약",
+    "은행", "증권", "보험", "생명보험", "손해보험",
+    "소프트웨어", "IT서비스", "정보기술서비스",
+    "철강", "금속과광업",
+    "건설", "건설자재",
+    "항공사", "해운사", "운수", "육상운송",
+    "유통", "식품과음료", "음식료품",
+    "통신서비스", "미디어와엔터테인먼트",
+    "부동산", "전기가스및수도",
+}
+
+
+def _fetch_sectors_html() -> list[dict]:
+    """동기 HTTP 호출 → asyncio.to_thread 에서 실행."""
+    with httpx.Client(timeout=15.0, headers=_HEADERS, follow_redirects=True) as client:
+        resp = client.get(_NAVER_URL)
+        resp.raise_for_status()
+
+    # Naver Finance 업종 페이지는 UTF-8 로 반환됨 (meta charset=utf-8 확인)
     try:
-        df = pykrx_stock.get_market_sector_classifications(date_str, "KOSPI")
+        content = resp.text
     except Exception:
-        return []
+        content = resp.content.decode("utf-8", errors="ignore")
 
-    if df is None or df.empty:
-        return []
+    sectors = []
+    for m in _ROW_RE.finditer(content):
+        name       = m.group(2).strip()
+        change_pct = float(m.group(3))
+        total      = int(m.group(4))
+        up         = int(m.group(5))
+        flat       = int(m.group(6))
+        down       = int(m.group(7))
 
-    sectors: dict[str, dict] = {}
+        # "기타" 카테고리 제외 (너무 넓고 의미 없음)
+        if name == "기타":
+            continue
 
-    for code, row in df.iterrows():
-        sector = str(row.get("업종명", "기타")).strip()
-        name   = str(row.get("종목명", code)).strip()
-        try:
-            chg = float(row.get("등락률", 0.0))
-        except (TypeError, ValueError):
-            chg = 0.0
-        try:
-            mktcap = int(row.get("시가총액", 0))
-        except (TypeError, ValueError):
-            mktcap = 0
+        sectors.append({
+            "sector":       name,
+            "change_pct":   round(change_pct, 2),
+            "total_mktcap": total,      # 종목수를 크기 proxy로 사용
+            "up_count":     up,
+            "down_count":   down,
+            "flat_count":   flat,
+            "total_stocks": total,
+            "top_stocks":   [],
+        })
 
-        if sector not in sectors:
-            sectors[sector] = {
-                "sector": sector,
-                "total_mktcap": 0,
-                "weighted_chg": 0.0,
-                "up_count":    0,
-                "down_count":  0,
-                "flat_count":  0,
-                "top_stocks":  [],
-            }
-
-        s = sectors[sector]
-        s["total_mktcap"]  += mktcap
-        s["weighted_chg"]  += chg * mktcap   # 가중합 (나중에 나누기)
-
-        if chg > 0:
-            s["up_count"]   += 1
-        elif chg < 0:
-            s["down_count"] += 1
-        else:
-            s["flat_count"] += 1
-
-        s["top_stocks"].append({"code": str(code), "name": name, "change_pct": chg, "mktcap": mktcap})
-
-    result = []
-    for s in sectors.values():
-        mc = s["total_mktcap"]
-        s["change_pct"] = round(s["weighted_chg"] / mc, 2) if mc > 0 else 0.0
-        del s["weighted_chg"]
-        # 상위 종목: 시가총액 상위 5개
-        s["top_stocks"] = sorted(s["top_stocks"], key=lambda x: x["mktcap"], reverse=True)[:5]
-        result.append(s)
-
-    # 시가총액 내림차순 정렬
-    result.sort(key=lambda x: x["total_mktcap"], reverse=True)
-    return result
+    # 변화율 내림차순 정렬
+    sectors.sort(key=lambda x: x["change_pct"], reverse=True)
+    return sectors
 
 
 async def get_sector_heatmap() -> dict:
-    """업종별 등락률·시가총액·상위 종목 반환 (캐시 포함)."""
+    """업종별 등락률 반환 (캐시 포함)."""
     redis = await get_redis()
     cached = await redis.get(_CACHE_KEY)
     if cached:
@@ -91,14 +118,14 @@ async def get_sector_heatmap() -> dict:
     date_str = _last_trading_day()
 
     try:
-        sectors = await asyncio.to_thread(_fetch_sector_raw, date_str)
+        sectors = await asyncio.to_thread(_fetch_sectors_html)
     except Exception:
         sectors = []
 
     result = {
-        "date": date_str,
+        "date":      date_str,
         "available": len(sectors) > 0,
-        "sectors": sectors,
+        "sectors":   sectors,
     }
 
     ttl = _TTL_OPEN if _is_market_open() else _TTL_CLOSED

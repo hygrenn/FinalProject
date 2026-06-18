@@ -26,6 +26,7 @@ interface Sector {
   up_count: number
   down_count: number
   flat_count: number
+  total_stocks: number
   top_stocks: TopStock[]
 }
 
@@ -141,9 +142,10 @@ export function MarketTab() {
       .finally(() => setLoading(false))
   }, [])
 
+  // total_stocks를 크기로 사용 (시총 대체)
   const treemapData = sectors.map((s) => ({
     name: s.sector,
-    value: s.total_mktcap,
+    value: Math.max(s.total_stocks || s.total_mktcap || 1, 1),
     change_pct: s.change_pct,
   }))
 
@@ -195,7 +197,7 @@ export function MarketTab() {
             <div className="bg-card border border-border rounded-lg p-3">
               <div className="text-sm font-semibold mb-2">업종 히트맵</div>
               <div className="text-[11px] text-muted-foreground mb-2">
-                크기 = 시가총액 · 색상 = 등락률 (클릭하면 업종 종목 표시)
+                크기 = 종목수 · 색상 = 등락률 · 클릭하면 업종 선택
               </div>
               <ResponsiveContainer width="100%" height={300}>
                 <Treemap
@@ -231,48 +233,57 @@ export function MarketTab() {
             </div>
           )}
 
-          {/* 섹터별 종목 리스트 */}
+          {/* 선택된 업종 정보 */}
           {selectedSector && (
             <div className="bg-card border border-border rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold">{selectedSector.sector}</div>
                 <div className={cn(
-                  'text-xs font-medium px-1.5 py-0.5 rounded',
-                  selectedSector.change_pct >= 0 ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'
+                  'text-sm font-bold px-2 py-0.5 rounded',
+                  selectedSector.change_pct >= 0
+                    ? 'text-green-400 bg-green-400/10'
+                    : 'text-red-400 bg-red-400/10'
                 )}>
                   {selectedSector.change_pct >= 0 ? '+' : ''}{selectedSector.change_pct.toFixed(2)}%
                 </div>
               </div>
-
-              <div className="flex gap-3 text-[11px] text-muted-foreground mb-2">
-                <span className="text-green-400">▲ {selectedSector.up_count}</span>
-                <span className="text-red-400">▼ {selectedSector.down_count}</span>
-                <span>— {selectedSector.flat_count}</span>
-                <span className="ml-auto">{fmtMktcap(selectedSector.total_mktcap)}</span>
-              </div>
-
-              <div className="space-y-1">
-                {selectedSector.top_stocks.map((s) => (
-                  <button
-                    key={s.code}
-                    onClick={() => setSelectedStock({ code: s.code, name: s.name })}
-                    className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-accent transition-colors text-left"
-                  >
-                    <div>
-                      <div className="text-xs font-medium">{s.name}</div>
-                      <div className="text-[10px] text-muted-foreground">{s.code}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className={cn('text-xs font-semibold',
-                        s.change_pct >= 0 ? 'text-green-400' : 'text-red-400'
-                      )}>
-                        {s.change_pct >= 0 ? '+' : ''}{s.change_pct.toFixed(2)}%
+              {(selectedSector.total_stocks || selectedSector.total_mktcap) > 0 && (
+                <div className="flex gap-3 text-[11px] text-muted-foreground mt-1">
+                  <span>전체 {selectedSector.total_stocks ?? selectedSector.total_mktcap}종목</span>
+                  <span className="text-green-400">▲ {selectedSector.up_count}</span>
+                  <span className="text-muted-foreground">— {selectedSector.flat_count}</span>
+                  <span className="text-red-400">▼ {selectedSector.down_count}</span>
+                </div>
+              )}
+              {/* top_stocks 는 KRX 로그인 없이 제공 불가 — 히트맵 클릭 시 업종명만 표시 */}
+              {selectedSector.top_stocks.length > 0 ? (
+                <div className="mt-2 space-y-1">
+                  {selectedSector.top_stocks.map((s) => (
+                    <button
+                      key={s.code}
+                      onClick={() => setSelectedStock({ code: s.code, name: s.name })}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-accent transition-colors text-left"
+                    >
+                      <div>
+                        <div className="text-xs font-medium">{s.name}</div>
+                        <div className="text-[10px] text-muted-foreground">{s.code}</div>
                       </div>
-                      <div className="text-[10px] text-muted-foreground">{fmtMktcap(s.mktcap)}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      <div className="text-right">
+                        <div className={cn('text-xs font-semibold',
+                          s.change_pct >= 0 ? 'text-green-400' : 'text-red-400'
+                        )}>
+                          {s.change_pct >= 0 ? '+' : ''}{s.change_pct.toFixed(2)}%
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">{fmtMktcap(s.mktcap)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-[11px] text-muted-foreground">
+                  히트맵에서 업종을 클릭하면 등락률을 확인할 수 있습니다.
+                </div>
+              )}
             </div>
           )}
         </>
