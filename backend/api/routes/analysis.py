@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import comprehensive_service, fundamental_service, market_index_service, recommend_service
+from services import comprehensive_service, fundamental_service, market_index_service, recommend_service, screener_service
 
 router = APIRouter()
 
@@ -44,3 +44,33 @@ async def get_comprehensive(request: Request, code: str):
 async def get_ai_ranking(request: Request, limit: int = Query(50, ge=1, le=100)):
     """top100 전체를 AI 점수만으로 정렬한 순위 (재무 필터 없음)."""
     return await recommend_service.get_ai_ranking(limit)
+
+
+@router.get("/screener")
+@limiter.limit("5/minute")
+async def run_screener(
+    request: Request,
+    signals: str = Query(default="", description="BUY,HOLD,SELL 쉼표 구분 (빈값=전체)"),
+    min_score: float | None = Query(default=None, ge=0, le=100),
+    grades: str = Query(default="", description="우수,양호,보통,위험 쉼표 구분 (빈값=전체)"),
+    max_per: float | None = Query(default=None, ge=0),
+    max_pbr: float | None = Query(default=None, ge=0),
+    min_roe: float | None = Query(default=None),
+    exclude_risk: bool = Query(default=False),
+    sort_by: str = Query(default="signal_score", pattern="^(signal_score|financial_score|per|pbr)$"),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    """사용자 조건으로 top100 필터링."""
+    sig_list = [s.strip() for s in signals.split(",") if s.strip()] or None
+    grade_list = [g.strip() for g in grades.split(",") if g.strip()] or None
+    return await screener_service.run_screener(
+        signals=sig_list,
+        min_score=min_score,
+        grades=grade_list,
+        max_per=max_per,
+        max_pbr=max_pbr,
+        min_roe=min_roe,
+        exclude_risk=exclude_risk,
+        sort_by=sort_by,
+        limit=limit,
+    )

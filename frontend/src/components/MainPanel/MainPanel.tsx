@@ -5,6 +5,7 @@ import { PortfolioTab } from './PortfolioTab/PortfolioTab'
 import { SimulatorTab } from './SimulatorTab/SimulatorTab'
 import { BacktestTab } from './BacktestTab/BacktestTab'
 import { RecommendTab } from './RecommendTab/RecommendTab'
+import { ScreenerTab } from './ScreenerTab/ScreenerTab'
 import { cn } from '@/lib/utils'
 import type { TabId } from '@/types'
 
@@ -17,14 +18,6 @@ const ALL_TABS: { id: TabId; label: string }[] = [
   { id: 'screener', label: '스크리너' },
   { id: 'backtest', label: '백테스트' },
 ]
-
-function PlaceholderTab({ name }: { name: string }) {
-  return (
-    <div className="flex items-center justify-center h-full text-muted-foreground">
-      {name} — 준비 중
-    </div>
-  )
-}
 
 export function MainPanel() {
   const { activeTab, setActiveTab } = useUIStore()
@@ -53,7 +46,7 @@ export function MainPanel() {
         {activeTab === 'recommend'  && <RecommendTab />}
         {activeTab === 'simulator'  && <SimulatorTab />}
         {activeTab === 'portfolio'  && <PortfolioTab />}
-        {activeTab === 'screener'   && <PlaceholderTab name="스크리너" />}
+        {activeTab === 'screener'   && <ScreenerTab />}
         {activeTab === 'backtest'   && <BacktestTab />}
       </div>
     </div>
