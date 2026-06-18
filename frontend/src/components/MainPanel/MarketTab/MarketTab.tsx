@@ -125,11 +125,14 @@ export function MarketTab() {
   const [trend, setTrend] = useState<string>('neutral')
 
   useEffect(() => {
-    setLoading(true)
-    Promise.all([
-      api.get<IndicesResponse>('/analysis/indices'),
-      api.get<SectorResponse>('/analysis/sector'),
-    ])
+    Promise.resolve()
+      .then(() => {
+        setLoading(true)
+        return Promise.all([
+          api.get<IndicesResponse>('/analysis/indices'),
+          api.get<SectorResponse>('/analysis/sector'),
+        ])
+      })
       .then(([idxRes, secRes]) => {
         setIndices(idxRes.data.indices ?? [])
         setTrend(idxRes.data.trend ?? 'neutral')

@@ -46,6 +46,7 @@ export function RecommendTab() {
   const [focusedCode, setFocusedCode] = useState<string | null>(null)
 
   const fetchRanking = useCallback(async () => {
+    await Promise.resolve()
     setLoading(true)
     try {
       const { data: res } = await api.get<RankingResponse>('/analysis/ai-ranking?limit=50')
@@ -57,7 +58,7 @@ export function RecommendTab() {
     }
   }, [])
 
-  useEffect(() => { fetchRanking() }, [fetchRanking])
+  useEffect(() => { Promise.resolve().then(fetchRanking) }, [fetchRanking])
 
   const handleSelect = (item: RankItem) => {
     setFocusedCode(item.code)

@@ -38,9 +38,8 @@ export function FundamentalPanel() {
   useEffect(() => {
     if (!selectedStock?.code) return
     const code = selectedStock.code
-    setLoading(true)
-    setData(null)
-    api.get<FundamentalResponse>(`/analysis/fundamental/${code}`)
+    Promise.resolve()
+      .then(() => { setLoading(true); setData(null); return api.get<FundamentalResponse>(`/analysis/fundamental/${code}`) })
       .then(({ data }) => setData(data))
       .catch(() => setData(null))
       .finally(() => setLoading(false))

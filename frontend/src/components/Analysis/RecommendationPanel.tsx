@@ -52,8 +52,8 @@ export function RecommendationPanel() {
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
 
   const load = () => {
-    setLoading(true)
-    api.get<RecommendationResponse>('/analysis/recommendations', { params: { limit: 15 } })
+    Promise.resolve()
+      .then(() => { setLoading(true); return api.get<RecommendationResponse>('/analysis/recommendations', { params: { limit: 15 } }) })
       .then(({ data }) => setData(data))
       .catch(() => setData(null))
       .finally(() => setLoading(false))
