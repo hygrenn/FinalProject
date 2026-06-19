@@ -64,7 +64,32 @@ export function PortfolioTab() {
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
-      {/* 요약 카드 */}
+      {/* 데이터 출처 설명 박스 */}
+      <div
+        data-testid="portfolio-description-box"
+        className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2.5 space-y-1"
+      >
+        {holdingSource ? (
+          <p>
+            보유 현황은{' '}
+            <span className="text-foreground font-medium">{holdingSource}</span>
+            에서 조회합니다.
+          </p>
+        ) : (
+          <p className="text-yellow-400">
+            KIS 잔고 조회에 실패해 앱 DB 포트폴리오 기록을 표시합니다.
+          </p>
+        )}
+        <p>
+          수익 추이, 승률, MDD는{' '}
+          {performanceSource
+            ? <span className="text-foreground font-medium">{performanceSource}</span>
+            : '앱에서 발생한 체결 기록'}
+          을 기준으로 계산합니다.
+        </p>
+      </div>
+
+      {/* 소스 배지 — holding_source / performance_source 있을 때만 */}
       {(holdingSource || performanceSource) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {holdingSource && (

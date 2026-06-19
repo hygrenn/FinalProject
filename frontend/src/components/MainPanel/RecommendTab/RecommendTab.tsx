@@ -4,6 +4,7 @@ import { ComprehensivePanel } from '@/components/Analysis/ComprehensivePanel'
 import { FundamentalPanel } from '@/components/Analysis/FundamentalPanel'
 import api from '@/lib/api'
 import { AlertTriangle } from 'lucide-react'
+import { buildReasonChips, type ReasonChip } from '@/lib/recommendReasons'
 
 interface RankItem {
   code: string
@@ -25,6 +26,30 @@ const SIGNAL_STYLE: Record<string, string> = {
   BUY:  'text-green-400 bg-green-400/10 border border-green-400/30',
   SELL: 'text-red-400 bg-red-400/10 border border-red-400/30',
   HOLD: 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/30',
+}
+
+const CHIP_COLOR: Record<ReasonChip['color'], string> = {
+  green: 'text-green-400 bg-green-400/10 border border-green-400/30',
+  yellow: 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/30',
+  red: 'text-red-400 bg-red-400/10 border border-red-400/30',
+  gray: 'text-muted-foreground bg-muted border border-border',
+  blue: 'text-blue-400 bg-blue-400/10 border border-blue-400/30',
+}
+
+function ReasonChips({ item }: { item: RankItem }) {
+  const chips = buildReasonChips(item)
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          className={`px-1 py-0.5 rounded text-[10px] font-medium ${CHIP_COLOR[chip.color]}`}
+        >
+          {chip.label}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function ScoreBar({ value }: { value: number }) {
@@ -142,6 +167,7 @@ export function RecommendTab() {
                       <td className="px-3 py-2">
                         <div className="font-medium">{item.name}</div>
                         <div className="text-muted-foreground text-[10px]">{item.code}</div>
+                        <ReasonChips item={item} />
                       </td>
                       <td className="px-3 py-2 text-center">
                         <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${SIGNAL_STYLE[item.signal] ?? ''}`}>

@@ -135,6 +135,21 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                   ? '실제 주문이 이 계좌로 실행됩니다.'
                   : '주문은 모의투자 계좌로 실행됩니다.'}
               </div>
+
+              {/* 조회 모드 안내 */}
+              <div
+                data-testid="account-mode-info"
+                className="text-xs text-muted-foreground bg-muted/40 border border-border rounded p-2 mb-3 space-y-1"
+              >
+                <p>
+                  현재 조회 모드:{' '}
+                  <span className="font-medium text-foreground">
+                    {data.mode === 'paper' ? '모의투자' : '실계좌'}
+                  </span>
+                </p>
+                <p>실계좌/모의계좌 전환은 리스크/설정 화면에서만 변경합니다.</p>
+              </div>
+
               <div className="text-xs text-muted-foreground mb-1">{data.account_no}</div>
               <div className="text-xl font-bold mb-0.5">{data.summary.total_asset.toLocaleString()}원</div>
               <div className="text-sm">
