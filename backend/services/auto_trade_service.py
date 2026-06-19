@@ -21,10 +21,14 @@ except Exception:
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi import HTTPException
 from models.ai_signal import AISignalHistory
 from models.auto_trade import AutoTradeConfig, AutoTradeLog
 from models.portfolio import Portfolio
 from models.trade import Trade
+from models.user import User
+from services import risk_service
+from services.market_service import get_stock_current_price
 
 logger = logging.getLogger(__name__)
 
@@ -289,13 +293,16 @@ async def _execute_paper_order(
 
 async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | None = None) -> dict[str, Any]:
     from services.ai_service import get_signal
-    from services.market_service import get_stock_current_price
 
     cfg = await get_config(user_id, db)
     if not cfg.enabled:
         return {"skipped": True, "reason": "not_enabled"}
     if cfg.mode == "real":
         return {"skipped": True, "reason": "real_mode_not_supported", "message": "자동매매는 모의투자 전용입니다."}
+
+    user = await db.get(User, user_id)
+    if user is None:
+        return {"skipped": True, "reason": "user_not_found"}
 
     locked = await _acquire_run_lock(user_id)
     if not locked:
@@ -391,19 +398,36 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 if qty < 1:
                     continue
 
+                # ── risk check ──────────────────────────────────────────────
+                try:
+                    warning = await risk_service.check_order(
+                        user, alloc["code"], "BUY", qty, cur, db, mode=cfg.mode
+                    )
+                except HTTPException as exc:
+                    actions.append({
+                        "action": "SKIP",
+                        "stock_code": alloc["code"],
+                        "reason": f"risk_blocked:{exc.detail}",
+                    })
+                    continue
+                # ─────────────────────────────────────────────────────────────
+
                 try:
                     log = await _execute_paper_order(
                         user_id, alloc["code"], name, "BUY", qty, cur,
                         f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
                     )
+                    if warning:
+                        log["warning"] = warning
                     actions.append(log)
                     available -= qty * cur
                 except Exception as exc:
                     logger.error("매수 실패 %s: %s", alloc["code"], exc)
 
         # 매매 없는 경우 이유 설명
+        trade_actions = [a for a in actions if a.get("action") in ("BUY", "SELL")]
         no_trade_reason = None
-        if not actions:
+        if not trade_actions:
             invested = used  # use the pre-calculated invested cost
             invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
                 f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
@@ -422,7 +446,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
 
         return {
-            "executed": len(actions),
+            "executed": len(trade_actions),
             "actions": actions,
             "scanned": len(candidates),
             "held_count": len(held),

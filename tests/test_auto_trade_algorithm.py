@@ -241,7 +241,7 @@ async def test_run_cycle_does_not_buy_when_cash_reserve_would_be_broken(db_sessi
         "services.auto_trade_service._get_buy_candidates",
         new=AsyncMock(return_value=buy_candidates),
     ), patch(
-        "services.market_service.get_stock_current_price",
+        "services.auto_trade_service.get_stock_current_price",
         new=AsyncMock(return_value={"close": 900_000, "name": "SK하이닉스"}),
     ), patch(
         "services.ai_service.get_signal",
@@ -295,7 +295,7 @@ async def test_run_cycle_respects_signal_threshold(db_session):
         "services.auto_trade_service._get_buy_candidates",
         new=AsyncMock(return_value=buy_candidates),
     ), patch(
-        "services.market_service.get_stock_current_price",
+        "services.auto_trade_service.get_stock_current_price",
         new=AsyncMock(return_value={"close": 70_000, "name": "삼성전자"}),
     ), patch(
         "services.ai_service.get_signal",
@@ -359,7 +359,7 @@ async def test_run_cycle_respects_max_positions(db_session):
         "services.auto_trade_service._get_buy_candidates",
         new=AsyncMock(return_value=buy_candidates),
     ), patch(
-        "services.market_service.get_stock_current_price",
+        "services.auto_trade_service.get_stock_current_price",
         new=AsyncMock(return_value={"close": 10_000, "name": "SK하이닉스"}),
     ), patch(
         "services.ai_service.get_signal",
@@ -449,6 +449,94 @@ async def test_run_cycle_releases_lock_when_price_fetch_raises(db_session):
 
 
 @pytest.mark.asyncio
+async def test_run_cycle_does_not_buy_when_risk_hard_stop_blocks(db_session):
+    """risk hard stop이면 BUY가 실행되지 않는다."""
+    from fastapi import HTTPException
+
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    with (
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
+        patch("services.auto_trade_service._get_buy_candidates",
+              new=AsyncMock(return_value=[{"code": "005930", "score": 90.0}])),
+        patch("services.auto_trade_service.get_stock_current_price",
+              new=AsyncMock(return_value={"close": 50_000, "name": "삼성전자"})),
+        patch("services.auto_trade_service.risk_service.check_order",
+              new=AsyncMock(side_effect=HTTPException(status_code=400, detail="거래 차단"))),
+        patch("services.ai_service.get_signal",
+              new=AsyncMock(return_value={"signal": "HOLD", "signal_score": 50})),
+    ):
+        result = await run_cycle(user_id, db_session)
+
+    assert result["executed"] == 0
+    assert any(a.get("action") == "SKIP" for a in result.get("actions", []))
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_records_warning_when_risk_service_warns(db_session):
+    """risk_service가 경고를 반환하면 주문은 실행되지만 log에 warning이 기록된다."""
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    with (
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
+        patch("services.auto_trade_service._get_buy_candidates",
+              new=AsyncMock(return_value=[{"code": "005930", "score": 90.0}])),
+        patch("services.auto_trade_service.get_stock_current_price",
+              new=AsyncMock(return_value={"close": 50_000, "name": "삼성전자"})),
+        patch("services.auto_trade_service.risk_service.check_order",
+              new=AsyncMock(return_value="종목별 한도 초과: 25.0% > 20.0%")),
+        patch("services.ai_service.get_signal",
+              new=AsyncMock(return_value={"signal": "HOLD", "signal_score": 50})),
+    ):
+        result = await run_cycle(user_id, db_session)
+
+    assert result["executed"] == 1
+    assert result["actions"][0].get("warning") is not None
+
+
+@pytest.mark.asyncio
 async def test_run_cycle_does_not_buy_when_max_positions_already_reached(db_session):
     """max_positions=2, 2개 보유 → remaining_slots=0 → 신규 매수 없음."""
     from services.auto_trade_service import run_cycle
@@ -495,7 +583,7 @@ async def test_run_cycle_does_not_buy_when_max_positions_already_reached(db_sess
         "services.auto_trade_service._get_buy_candidates",
         new=AsyncMock(return_value=buy_candidates),
     ), patch(
-        "services.market_service.get_stock_current_price",
+        "services.auto_trade_service.get_stock_current_price",
         new=AsyncMock(return_value={"close": 10_000, "name": "삼성전자"}),
     ), patch(
         "services.ai_service.get_signal",
