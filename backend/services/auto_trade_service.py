@@ -32,6 +32,18 @@ _MAX_SINGLE_STOCK_PCT = 0.30   # 한 종목에 총예산의 최대 30%
 _CASH_RESERVE_PCT    = 0.10   # 총예산의 10%는 현금 보유
 
 
+async def _acquire_run_lock(user_id: UUID) -> bool:
+    from core.redis_client import get_redis
+    redis = await get_redis()
+    return bool(await redis.set(f"auto_trade:lock:{user_id}", "1", ex=240, nx=True))
+
+
+async def _release_run_lock(user_id: UUID) -> None:
+    from core.redis_client import get_redis
+    redis = await get_redis()
+    await redis.delete(f"auto_trade:lock:{user_id}")
+
+
 def _calculate_buying_power(total_budget: int, used_cost: int) -> int:
     """현금 보유 비율을 제외한 실제 매수 가용 금액 계산.
 
@@ -285,133 +297,139 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
     if cfg.mode == "real":
         return {"skipped": True, "reason": "real_mode_not_supported", "message": "자동매매는 모의투자 전용입니다."}
 
-    actions: list[dict] = []
+    locked = await _acquire_run_lock(user_id)
+    if not locked:
+        return {"skipped": True, "reason": "already_running"}
+    try:
+        actions: list[dict] = []
 
-    # ── 1. 기존 보유 포지션: 손절/익절/AI SELL ────────────────────────
-    holdings_res = await db.execute(
-        select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == cfg.mode)
-    )
-    for holding in holdings_res.scalars().all():
-        try:
-            price_data = await get_stock_current_price(holding.stock_code)
-            cur = price_data.get("close", 0)
-        except Exception:
-            continue
-        if cur <= 0:
-            continue
-
-        avg = float(holding.avg_price)
-        pct = (cur - avg) / avg * 100.0
-        sell_reason, sell_score = None, 0.0
-
-        if pct <= -cfg.stop_loss_pct:
-            sell_reason = f"손절({pct:.1f}%)"
-        elif pct >= cfg.take_profit_pct:
-            sell_reason = f"익절(+{pct:.1f}%)"
-        else:
-            try:
-                sig = await get_signal(holding.stock_code, db)
-                sell_score = float(sig.get("signal_score", 0))
-                if sig.get("signal") == "SELL":
-                    sell_reason = f"AI SELL({sell_score:.0f}점)"
-            except Exception:
-                pass
-
-        if sell_reason:
-            try:
-                log = await _execute_paper_order(
-                    user_id, holding.stock_code, holding.stock_name or "",
-                    "SELL", holding.quantity, cur,
-                    sell_reason, cfg.mode, sell_score, db,
-                )
-                actions.append(log)
-            except Exception as exc:
-                logger.error("매도 실패 %s: %s", holding.stock_code, exc)
-
-    # ── 2. AI 스크리닝 → 신규 매수 ────────────────────────────────────
-    used = sum(int(float(h.avg_price) * h.quantity) for h in (
-        (await db.execute(select(Portfolio).where(
-            Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
-        ))).scalars().all()
-    ))
-    available = _calculate_buying_power(cfg.total_budget, used)
-
-    candidates: list[dict] = []
-    held: set[str] = set()
-    fresh: list[dict] = []
-    remaining_slots: int = 0
-
-    if available > 0:
-        candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
-
-        held_res = await db.execute(
-            select(Portfolio.stock_code).where(
-                Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
-            )
+        # ── 1. 기존 보유 포지션: 손절/익절/AI SELL ────────────────────────
+        holdings_res = await db.execute(
+            select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == cfg.mode)
         )
-        held = {r[0] for r in held_res.fetchall()}
-        fresh = [
-            c for c in candidates
-            if c["code"] not in held and c["score"] >= cfg.signal_threshold
-        ]
-        remaining_slots = max(0, cfg.max_positions - len(held))
-        fresh = fresh[:remaining_slots]
-
-        allocations = _allocate(fresh, available, cfg.total_budget)
-
-        for alloc in allocations:
-            if available <= 0:
-                break
+        for holding in holdings_res.scalars().all():
             try:
-                price_data = await get_stock_current_price(alloc["code"])
+                price_data = await get_stock_current_price(holding.stock_code)
                 cur = price_data.get("close", 0)
-                name = price_data.get("name", alloc["code"])
             except Exception:
                 continue
             if cur <= 0:
                 continue
 
-            qty = alloc["alloc"] // cur
-            if qty < 1:
-                continue
+            avg = float(holding.avg_price)
+            pct = (cur - avg) / avg * 100.0
+            sell_reason, sell_score = None, 0.0
 
-            try:
-                log = await _execute_paper_order(
-                    user_id, alloc["code"], name, "BUY", qty, cur,
-                    f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
+            if pct <= -cfg.stop_loss_pct:
+                sell_reason = f"손절({pct:.1f}%)"
+            elif pct >= cfg.take_profit_pct:
+                sell_reason = f"익절(+{pct:.1f}%)"
+            else:
+                try:
+                    sig = await get_signal(holding.stock_code, db)
+                    sell_score = float(sig.get("signal_score", 0))
+                    if sig.get("signal") == "SELL":
+                        sell_reason = f"AI SELL({sell_score:.0f}점)"
+                except Exception:
+                    pass
+
+            if sell_reason:
+                try:
+                    log = await _execute_paper_order(
+                        user_id, holding.stock_code, holding.stock_name or "",
+                        "SELL", holding.quantity, cur,
+                        sell_reason, cfg.mode, sell_score, db,
+                    )
+                    actions.append(log)
+                except Exception as exc:
+                    logger.error("매도 실패 %s: %s", holding.stock_code, exc)
+
+        # ── 2. AI 스크리닝 → 신규 매수 ────────────────────────────────────
+        used = sum(int(float(h.avg_price) * h.quantity) for h in (
+            (await db.execute(select(Portfolio).where(
+                Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
+            ))).scalars().all()
+        ))
+        available = _calculate_buying_power(cfg.total_budget, used)
+
+        candidates: list[dict] = []
+        held: set[str] = set()
+        fresh: list[dict] = []
+        remaining_slots: int = 0
+
+        if available > 0:
+            candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
+
+            held_res = await db.execute(
+                select(Portfolio.stock_code).where(
+                    Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
                 )
-                actions.append(log)
-                available -= qty * cur
-            except Exception as exc:
-                logger.error("매수 실패 %s: %s", alloc["code"], exc)
+            )
+            held = {r[0] for r in held_res.fetchall()}
+            fresh = [
+                c for c in candidates
+                if c["code"] not in held and c["score"] >= cfg.signal_threshold
+            ]
+            remaining_slots = max(0, cfg.max_positions - len(held))
+            fresh = fresh[:remaining_slots]
 
-    # 매매 없는 경우 이유 설명
-    no_trade_reason = None
-    if not actions:
-        invested = used  # use the pre-calculated invested cost
-        invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
-            f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
-        )
-        if available <= 0:
-            no_trade_reason = f"가용 예산 부족 또는 현금 보유 한도 도달 (투자됨: {invested_str})"
-        elif not candidates:
-            no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
-        elif all(c["code"] in held for c in candidates):
-            no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
-        elif remaining_slots == 0:
-            no_trade_reason = f"보유 종목 수 한도 도달 ({len(held)}/{cfg.max_positions})"
-        elif not fresh:
-            no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 신호 점수 미달 (기준: {cfg.signal_threshold}점)"
-        else:
-            no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
+            allocations = _allocate(fresh, available, cfg.total_budget)
 
-    return {
-        "executed": len(actions),
-        "actions": actions,
-        "scanned": len(candidates),
-        "held_count": len(held),
-        "no_trade_reason": no_trade_reason,
-    }
+            for alloc in allocations:
+                if available <= 0:
+                    break
+                try:
+                    price_data = await get_stock_current_price(alloc["code"])
+                    cur = price_data.get("close", 0)
+                    name = price_data.get("name", alloc["code"])
+                except Exception:
+                    continue
+                if cur <= 0:
+                    continue
+
+                qty = alloc["alloc"] // cur
+                if qty < 1:
+                    continue
+
+                try:
+                    log = await _execute_paper_order(
+                        user_id, alloc["code"], name, "BUY", qty, cur,
+                        f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
+                    )
+                    actions.append(log)
+                    available -= qty * cur
+                except Exception as exc:
+                    logger.error("매수 실패 %s: %s", alloc["code"], exc)
+
+        # 매매 없는 경우 이유 설명
+        no_trade_reason = None
+        if not actions:
+            invested = used  # use the pre-calculated invested cost
+            invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
+                f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
+            )
+            if available <= 0:
+                no_trade_reason = f"가용 예산 부족 또는 현금 보유 한도 도달 (투자됨: {invested_str})"
+            elif not candidates:
+                no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
+            elif all(c["code"] in held for c in candidates):
+                no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
+            elif remaining_slots == 0:
+                no_trade_reason = f"보유 종목 수 한도 도달 ({len(held)}/{cfg.max_positions})"
+            elif not fresh:
+                no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 신호 점수 미달 (기준: {cfg.signal_threshold}점)"
+            else:
+                no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
+
+        return {
+            "executed": len(actions),
+            "actions": actions,
+            "scanned": len(candidates),
+            "held_count": len(held),
+            "no_trade_reason": no_trade_reason,
+        }
+    finally:
+        await _release_run_lock(user_id)
 
 
 async def kill_switch(user_id: UUID, db: AsyncSession) -> dict[str, Any]:

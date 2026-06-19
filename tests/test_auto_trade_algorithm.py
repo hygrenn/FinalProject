@@ -378,6 +378,77 @@ async def test_run_cycle_respects_max_positions(db_session):
 
 
 @pytest.mark.asyncio
+async def test_run_cycle_skips_when_user_lock_is_held(db_session):
+    """lock을 이미 획득한 상태에서 run_cycle을 호출하면 already_running을 반환한다."""
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    with patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=False)):
+        result = await run_cycle(user_id, db_session)
+
+    assert result["skipped"] is True
+    assert result["reason"] == "already_running"
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_releases_lock_when_price_fetch_raises(db_session):
+    """내부 예외가 발생해도 lock은 반드시 해제된다."""
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    release_mock = AsyncMock()
+
+    with (
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._release_run_lock", new=release_mock),
+        patch("services.auto_trade_service._get_buy_candidates", new=AsyncMock(side_effect=RuntimeError("fail"))),
+    ):
+        with pytest.raises(RuntimeError):
+            await run_cycle(user_id, db_session)
+
+    # Lock must have been released even when an exception propagates
+    release_mock.assert_called_once_with(user_id)
+
+
+@pytest.mark.asyncio
 async def test_run_cycle_does_not_buy_when_max_positions_already_reached(db_session):
     """max_positions=2, 2개 보유 → remaining_slots=0 → 신규 매수 없음."""
     from services.auto_trade_service import run_cycle
