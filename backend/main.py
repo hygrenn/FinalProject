@@ -19,6 +19,7 @@ from api.routes import realtime as realtime_router
 from api.routes import risk as risk_router
 from api.routes import simulate as simulate_router
 from api.routes import stocks as stocks_router
+from api.routes import auto_trade as auto_trade_router
 from api.routes import system as system_router
 from api.routes import trades as trades_router
 from api.routes import watchlist as watchlist_router
@@ -62,6 +63,7 @@ app.include_router(watchlist_router.router, prefix="/watchlist", tags=["watchlis
 app.include_router(account_router.router, prefix="/account", tags=["account"])
 app.include_router(analysis_router.router, prefix="/analysis", tags=["analysis"])
 app.include_router(system_router.router, prefix="/system", tags=["system"])
+app.include_router(auto_trade_router.router, prefix="/auto-trade", tags=["auto-trade"])
 
 
 @app.get("/health")

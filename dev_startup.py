@@ -71,6 +71,7 @@ async def _init_db():
     import models.risk       # noqa
     import models.trade      # noqa
     import models.watchlist  # noqa
+    import models.auto_trade  # noqa
 
     engine = create_async_engine(os.environ["DATABASE_URL"], echo=False)
     async with engine.begin() as conn:
