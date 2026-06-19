@@ -459,6 +459,7 @@ async def test_run_cycle_allows_sell_even_when_buy_is_blocked(db_session):
     ))
     await db_session.flush()
 
+    risk_check_mock = AsyncMock(side_effect=HTTPException(status_code=400, detail="거래 차단"))
     with (
         patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
         patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
@@ -466,14 +467,17 @@ async def test_run_cycle_allows_sell_even_when_buy_is_blocked(db_session):
               new=AsyncMock(return_value=[{"code": "000660", "score": 90.0}])),
         patch("services.market_service.get_stock_current_price",
               new=AsyncMock(return_value={"close": 70_000, "name": "삼성전자"})),
-        patch("services.auto_trade_service.risk_service.check_order",
-              new=AsyncMock(side_effect=HTTPException(status_code=400, detail="거래 차단"))),
+        patch("services.auto_trade_service.risk_service.check_order", new=risk_check_mock),
     ):
         result = await run_cycle(user_id, db_session)
 
     sell_actions = [a for a in result.get("actions", []) if a.get("action") == "SELL"]
     assert len(sell_actions) >= 1, f"expected SELL action but got actions: {result.get('actions')}"
     assert result["executed"] >= 1, f"expected executed>=1 but got {result['executed']}"
+    # check_order called once (for BUY candidate only, never for SELL)
+    assert risk_check_mock.call_count == 1, (
+        f"expected check_order called once (for BUY) but got {risk_check_mock.call_count}"
+    )
 
 
 @pytest.mark.asyncio

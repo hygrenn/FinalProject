@@ -18,7 +18,7 @@ try:
 except Exception:
     _STOCK_NAMES = {}
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import HTTPException
@@ -38,7 +38,7 @@ _CASH_RESERVE_PCT    = 0.10   # 총예산의 10%는 현금 보유
 async def _acquire_run_lock(user_id: UUID) -> bool:
     from core.redis_client import get_redis
     redis = await get_redis()
-    return bool(await redis.set(f"auto_trade:lock:{user_id}", "1", ex=240, nx=True))
+    return bool(await redis.set(f"auto_trade:lock:{user_id}", "1", ex=360, nx=True))
 
 
 async def _release_run_lock(user_id: UUID) -> None:
