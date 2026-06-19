@@ -298,7 +298,7 @@ export function AutoTradePanel() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {config.enabled
                       ? `${formatKRW(config.total_budget)} 운용 · 5분마다 자동 스캔`
-                      : 'AI에게 예산을 맡기면 5분마다 자동으로 매매합니다'}
+                      : '최근 거래일 종가 기준 모의 자동매매 · 5분 주기'}
                   </p>
                 </div>
               </div>

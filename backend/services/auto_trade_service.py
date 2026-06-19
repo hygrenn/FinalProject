@@ -319,6 +319,13 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
         return {"skipped": True, "reason": "already_running"}
     try:
         actions: list[dict] = []
+        diagnostics: dict[str, Any] = {
+            "signal_fetch_failed": 0,
+            "price_fetch_failed": 0,
+            "risk_blocked": 0,
+            "below_threshold": 0,
+            "max_positions_reached": False,
+        }
 
         # ── 1. 기존 보유 포지션: 손절/익절/AI SELL ────────────────────────
         holdings_res = await db.execute(
@@ -348,7 +355,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                     if sig.get("signal") == "SELL":
                         sell_reason = f"AI SELL({sell_score:.0f}점)"
                 except Exception:
-                    pass
+                    diagnostics["signal_fetch_failed"] += 1
 
             if sell_reason:
                 try:
@@ -373,7 +380,6 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
         held: set[str] = set()
         fresh: list[dict] = []
         remaining_slots: int = 0
-        risk_blocked_count: int = 0
 
         if available > 0:
             candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
@@ -389,6 +395,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 if c["code"] not in held and c["score"] >= cfg.signal_threshold
             ]
             remaining_slots = max(0, cfg.max_positions - len(held))
+            diagnostics["below_threshold"] = len([c for c in candidates if c["code"] not in held and c["score"] < cfg.signal_threshold])
+            diagnostics["max_positions_reached"] = remaining_slots == 0
             fresh = fresh[:remaining_slots]
 
             allocations = _allocate(fresh, available, cfg.total_budget)
@@ -400,6 +408,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                     cur = price_data.get("close", 0)
                     name = price_data.get("name", alloc["code"])
                 except Exception:
+                    diagnostics["price_fetch_failed"] += 1
                     continue
                 if cur <= 0:
                     continue
@@ -419,7 +428,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                         "stock_code": alloc["code"],
                         "reason": f"risk_blocked:{exc.detail}",
                     })
-                    risk_blocked_count += 1
+                    diagnostics["risk_blocked"] += 1
                     continue
                 # ─────────────────────────────────────────────────────────────
 
@@ -452,8 +461,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 no_trade_reason = f"보유 종목 수 한도 도달 ({len(held)}/{cfg.max_positions})"
             elif not fresh:
                 no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 신호 점수 미달 (기준: {cfg.signal_threshold}점)"
-            elif risk_blocked_count > 0:
-                no_trade_reason = f"BUY 후보 {risk_blocked_count}개 리스크 규칙으로 차단됨"
+            elif diagnostics["risk_blocked"] > 0:
+                no_trade_reason = f"BUY 후보 {diagnostics['risk_blocked']}개 리스크 규칙으로 차단됨"
             else:
                 no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
 
@@ -463,6 +472,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             "scanned": len(candidates),
             "held_count": len(held),
             "no_trade_reason": no_trade_reason,
+            "diagnostics": diagnostics,
         }
     finally:
         await _release_run_lock(user_id)

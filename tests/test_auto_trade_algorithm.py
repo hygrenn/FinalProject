@@ -378,6 +378,105 @@ async def test_run_cycle_respects_max_positions(db_session):
 
 
 @pytest.mark.asyncio
+async def test_run_cycle_reports_price_fetch_failures(db_session):
+    """가격 조회 실패 건수가 diagnostics에 기록된다."""
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    with (
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
+        patch("services.auto_trade_service._get_buy_candidates",
+              new=AsyncMock(return_value=[
+                  {"code": "005930", "score": 90.0},
+                  {"code": "000660", "score": 85.0},
+              ])),
+        patch("services.market_service.get_stock_current_price",
+              new=AsyncMock(side_effect=RuntimeError("시세 조회 실패"))),
+    ):
+        result = await run_cycle(user_id, db_session)
+
+    diag = result.get("diagnostics", {})
+    assert diag.get("price_fetch_failed", 0) == 2, (
+        f"expected price_fetch_failed=2 but got {diag}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_allows_sell_even_when_buy_is_blocked(db_session):
+    """risk hard stop이 BUY를 막아도 익절 SELL은 실행된다."""
+    from fastapi import HTTPException
+
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    # avg=60_000, price=70_000 → +16.7% > take_profit_pct(5%) → 익절 SELL 조건
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=5.0,
+    ))
+    await db_session.flush()
+
+    db_session.add(Portfolio(
+        user_id=user_id,
+        stock_code="005930",
+        stock_name="삼성전자",
+        quantity=5,
+        avg_price=60_000,
+        mode="paper",
+    ))
+    await db_session.flush()
+
+    with (
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
+        patch("services.auto_trade_service._get_buy_candidates",
+              new=AsyncMock(return_value=[{"code": "000660", "score": 90.0}])),
+        patch("services.market_service.get_stock_current_price",
+              new=AsyncMock(return_value={"close": 70_000, "name": "삼성전자"})),
+        patch("services.auto_trade_service.risk_service.check_order",
+              new=AsyncMock(side_effect=HTTPException(status_code=400, detail="거래 차단"))),
+    ):
+        result = await run_cycle(user_id, db_session)
+
+    sell_actions = [a for a in result.get("actions", []) if a.get("action") == "SELL"]
+    assert len(sell_actions) >= 1, f"expected SELL action but got actions: {result.get('actions')}"
+    assert result["executed"] >= 1, f"expected executed>=1 but got {result['executed']}"
+
+
+@pytest.mark.asyncio
 async def test_run_cycle_skips_when_user_lock_is_held(db_session):
     """lock을 이미 획득한 상태에서 run_cycle을 호출하면 already_running을 반환한다."""
     from services.auto_trade_service import run_cycle
