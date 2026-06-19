@@ -18,6 +18,8 @@ interface TradeItem {
   created_at: string | null
 }
 
+const RECENT_TRADES_LIMIT = 10
+
 const STATUS_LABEL: Record<TradeStatus, string> = {
   PENDING: '주문 접수됨, 체결 확인 중',
   PARTIALLY_FILLED: '일부 체결',
@@ -68,7 +70,7 @@ export function RecentTradesPanel({ refreshSignal }: RecentTradesPanelProps) {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await api.get<TradeItem[]>('/trades?limit=10')
+      const { data } = await api.get<TradeItem[]>(`/trades?limit=${RECENT_TRADES_LIMIT}`)
       setTrades(data)
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail

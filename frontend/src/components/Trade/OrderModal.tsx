@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import type { Stock } from '@/types'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { useUIStore } from '@/store/uiStore'
 
 interface OrderModalProps {
   open: boolean
@@ -21,6 +22,7 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
   const [error, setError] = useState<string | null>(null)
   const [account, setAccount] = useState<{ mode: 'paper' | 'real'; account_no: string } | null>(null)
   const [confirmingReal, setConfirmingReal] = useState(false)
+  const notifyOrderPlaced = useUIStore((s) => s.notifyOrderPlaced)
 
   const isBuy = orderType === 'BUY'
   const total = Number(quantity) * Number(price)
@@ -49,6 +51,7 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
         quantity: Number(quantity),
         price: priceType === 'LIMIT' ? Number(price) : undefined,
       })
+      notifyOrderPlaced()
       setTimeout(() => { setSubmitted(false); closeModal() }, 1500)
     } catch (err: unknown) {
       setSubmitted(false)

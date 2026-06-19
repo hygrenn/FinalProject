@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { X, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
+import { useUIStore } from '@/store/uiStore'
 import api from '@/lib/api'
 import { RecentTradesPanel } from '@/components/Trade/RecentTradesPanel'
 
@@ -56,6 +57,7 @@ interface AccountPanelProps {
 
 export function AccountPanel({ onClose }: AccountPanelProps) {
   const { user } = useAuthStore()
+  const lastOrderAt = useUIStore((s) => s.lastOrderAt)
   const [data, setData] = useState<AccountData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -213,7 +215,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
         )}
 
         {/* 최근 주문 패널 — 계좌/보유 종목과 같은 맥락에 배치 */}
-        {user && <RecentTradesPanel />}
+        {user && <RecentTradesPanel refreshSignal={lastOrderAt} />}
       </div>
 
       {data && (
