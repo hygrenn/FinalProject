@@ -28,7 +28,6 @@ from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
 from services import risk_service
-from services.market_service import get_stock_current_price
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +231,7 @@ async def _execute_paper_order(
     order_type: str, quantity: int, price: int,
     reason: str, mode: str, signal_score: float,
     db: AsyncSession,
+    warning: str | None = None,
 ) -> dict[str, Any]:
     if quantity <= 0 or price <= 0:
         raise ValueError(f"invalid quantity={quantity} or price={price}")
@@ -280,19 +280,29 @@ async def _execute_paper_order(
         if holding.quantity <= 0:
             await db.delete(holding)
 
+    if order_type == "BUY" and warning:
+        reason_str = f"{reason} [WARN: {warning[:80]}]"
+    else:
+        reason_str = reason
+
     db.add(AutoTradeLog(
         user_id=user_id, stock_code=stock_code, stock_name=stock_name,
         action=order_type, quantity=executed_qty, price=price,
-        total_amount=executed_qty * price, reason=reason,
+        total_amount=executed_qty * price, reason=reason_str,
         signal_score=signal_score, mode=mode,
     ))
     await db.commit()
-    return {"action": order_type, "stock_code": stock_code, "stock_name": stock_name,
-            "quantity": executed_qty, "price": price, "total_amount": executed_qty * price, "reason": reason}
+    ret = {"action": order_type, "stock_code": stock_code, "stock_name": stock_name,
+           "quantity": executed_qty, "price": price, "total_amount": executed_qty * price,
+           "reason": reason_str}
+    if warning:
+        ret["warning"] = warning
+    return ret
 
 
 async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | None = None) -> dict[str, Any]:
     from services.ai_service import get_signal
+    from services.market_service import get_stock_current_price
 
     cfg = await get_config(user_id, db)
     if not cfg.enabled:
@@ -363,6 +373,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
         held: set[str] = set()
         fresh: list[dict] = []
         remaining_slots: int = 0
+        risk_blocked_count: int = 0
 
         if available > 0:
             candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
@@ -381,7 +392,6 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             fresh = fresh[:remaining_slots]
 
             allocations = _allocate(fresh, available, cfg.total_budget)
-
             for alloc in allocations:
                 if available <= 0:
                     break
@@ -409,6 +419,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                         "stock_code": alloc["code"],
                         "reason": f"risk_blocked:{exc.detail}",
                     })
+                    risk_blocked_count += 1
                     continue
                 # ─────────────────────────────────────────────────────────────
 
@@ -416,9 +427,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                     log = await _execute_paper_order(
                         user_id, alloc["code"], name, "BUY", qty, cur,
                         f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
+                        warning=warning,
                     )
-                    if warning:
-                        log["warning"] = warning
                     actions.append(log)
                     available -= qty * cur
                 except Exception as exc:
@@ -442,6 +452,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 no_trade_reason = f"보유 종목 수 한도 도달 ({len(held)}/{cfg.max_positions})"
             elif not fresh:
                 no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 신호 점수 미달 (기준: {cfg.signal_threshold}점)"
+            elif risk_blocked_count > 0:
+                no_trade_reason = f"BUY 후보 {risk_blocked_count}개 리스크 규칙으로 차단됨"
             else:
                 no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
 
