@@ -396,3 +396,24 @@ merge 전 필수 조건:
 
 위 조건을 만족하면 `seogu-Jeong -> dev` PR로 병합하는 것이 가장 안전하다.
 
+---
+
+## 후속 수정 현황 (PR #8, 2026-06-20)
+
+PR #8(`merge-seogu-autotrade → dev`)에서 위 필수 조건 7개를 모두 해결했다.
+
+```text
+[x] ChartTab 충돌 해결 (null 초기값 유지)
+[x] AutoTradePanel lint 통과 (0 errors)
+[x] 자동매매 Alembic migration 추가 (g7h8i9j0k1l2)
+[x] /auto-trade 기본 API 테스트 추가 (7개)
+[x] backend 테스트 통과 (145 passed)
+[x] frontend lint/build 통과
+[x] 자동매매 real/paper 정책 명확화 (PUT → 400, run_cycle → skipped)
+```
+
+단, PR #8 추가 검토(`260620_pr8_autotrade_fix_instructions.md`)에서 아래 2개 이슈가 발견되어 동일 브랜치에서 추가 수정함:
+
+- **P0**: `g7h8i9j0k1l2` migration의 `down_revision`이 `f6a1b2c3d4e5`를 가리켜 head가 2개(`c9d0e1f2a3b4`, `g7h8i9j0k1l2`)로 갈라짐 → `down_revision = "c9d0e1f2a3b4"`로 수정하여 단일 head로 통합
+- **P1**: Celery beat의 `run-auto-trade` 스케줄과 브라우저 5분 폴링이 동시에 동작하면 같은 계정에 중복 실행될 수 있음 → Celery beat 스케줄 제거 (UI 폴링만 유지)
+

@@ -23,10 +23,6 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.email_tasks.check_daily_loss",
         "schedule": 600.0,
     },
-    "run-auto-trade": {
-        "task": "tasks.auto_trade_tasks.run_auto_trade_all",
-        "schedule": crontab(minute="*/10", hour="9-15", day_of_week="mon-fri"),
-    },
 }
 celery_app.conf.timezone = "Asia/Seoul"
 celery_app.conf.broker_connection_retry_on_startup = True
