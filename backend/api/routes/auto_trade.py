@@ -79,7 +79,7 @@ async def get_logs(
 
 
 @router.post("/run")
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 async def run_cycle(
     request: Request,
     user: User = Depends(get_current_user),

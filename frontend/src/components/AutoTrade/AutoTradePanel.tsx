@@ -106,12 +106,23 @@ export function AutoTradePanel() {
       if (res.data.skipped) {
         setError('자동매매를 먼저 활성화해 주세요.')
       } else {
-        const n = res.data.executed
-        setRunResult(n > 0 ? `${n}건 실행 완료` : '현재 조건에 맞는 매매 없음')
+        const { executed, scanned, held_count, no_trade_reason } = res.data
+        if (executed > 0) {
+          setRunResult(`${executed}건 실행 완료 (${scanned}종목 분석)`)
+        } else {
+          const detail = no_trade_reason || '조건 미충족'
+          const scanInfo = scanned > 0 ? `${scanned}종목 분석` : '종목 분석 중'
+          const heldInfo = held_count > 0 ? ` · 보유 ${held_count}종목` : ''
+          setRunResult(`매매 없음 — ${scanInfo}${heldInfo} → ${detail}`)
+        }
         await fetchLogs()
       }
     } catch (e: any) {
-      setError(e.response?.data?.detail || '실행 실패')
+      if (e.response?.status === 429) {
+        setError('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.')
+      } else {
+        setError(e.response?.data?.detail || '실행 실패')
+      }
     } finally {
       setRunning(false)
     }
@@ -248,7 +259,15 @@ export function AutoTradePanel() {
 
         {/* 알림 */}
         {error && <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-2.5 text-sm text-destructive">{error}</div>}
-        {runResult && <div className="bg-green-500/10 border border-green-500/30 rounded-lg px-4 py-2.5 text-sm text-green-400">✅ {runResult}</div>}
+        {runResult && (
+          <div className={`border rounded-lg px-4 py-2.5 text-sm ${
+            runResult.startsWith('매매 없음')
+              ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+              : 'bg-green-500/10 border-green-500/30 text-green-400'
+          }`}>
+            {runResult.startsWith('매매 없음') ? '⚠️' : '✅'} {runResult}
+          </div>
+        )}
 
         {/* 운용 현황 */}
         {logs.length > 0 && (

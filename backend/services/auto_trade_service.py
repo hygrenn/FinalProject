@@ -103,17 +103,24 @@ async def _get_buy_candidates(db: AsyncSession) -> list[dict]:
     except Exception:
         pass
 
-    # 3. fallback: 주요 대형주 실시간 계산
-    if not candidates:
-        MAJOR = ["005930", "000660", "035720", "005380", "051910",
-                 "006400", "068270", "207940", "035420", "105560"]
-        for code in MAJOR:
-            try:
-                sig = await get_signal(code, db)
-                if sig.get("signal") == "BUY":
-                    candidates[code] = {"code": code, "score": float(sig.get("signal_score", 0))}
-            except Exception:
-                continue
+    # 3. fallback: 코스피 주요 50종목 실시간 계산
+    MAJOR = [
+        "005930","000660","035720","005380","051910","006400","068270","207940",
+        "035420","105560","055550","086790","032830","028260","066570","017670",
+        "003550","012330","011200","096770","034220","000270","015760","009150",
+        "018260","010950","011070","047050","024110","000810","033780","030200",
+        "003490","036570","251270","316140","323410","402340","259960","293490",
+        "352820","035900","036460","180640","011780","009830","004020","010060",
+        "000100","007070",
+    ]
+    scan_codes = [c for c in MAJOR if c not in candidates]
+    for code in scan_codes:
+        try:
+            sig = await get_signal(code, db)
+            if sig.get("signal") == "BUY":
+                candidates[code] = {"code": code, "score": float(sig.get("signal_score", 0))}
+        except Exception:
+            continue
 
     return sorted(candidates.values(), key=lambda x: x["score"], reverse=True)
 
@@ -257,6 +264,9 @@ async def run_cycle(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
     ))
     available = cfg.total_budget - used
 
+    candidates: list[dict] = []
+    held: set[str] = set()
+
     if available > 0:
         candidates = await _get_buy_candidates(db)
 
@@ -296,7 +306,29 @@ async def run_cycle(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
             except Exception as exc:
                 logger.error("매수 실패 %s: %s", alloc["code"], exc)
 
-    return {"executed": len(actions), "actions": actions}
+    # 매매 없는 경우 이유 설명
+    no_trade_reason = None
+    if not actions:
+        invested = cfg.total_budget - available
+        invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
+            f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
+        )
+        if not candidates:
+            no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
+        elif all(c["code"] in held for c in candidates):
+            no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
+        elif available <= 0:
+            no_trade_reason = f"가용 예산 부족 (투자됨: {invested_str})"
+        else:
+            no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
+
+    return {
+        "executed": len(actions),
+        "actions": actions,
+        "scanned": len(candidates),
+        "held_count": len(held),
+        "no_trade_reason": no_trade_reason,
+    }
 
 
 async def kill_switch(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
