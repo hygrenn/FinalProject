@@ -1,7 +1,7 @@
 import axios, { type AxiosError } from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE,
+  baseURL: import.meta.env.VITE_API_BASE ?? 'http://localhost:8000',
   withCredentials: true,
 })
 
@@ -38,7 +38,7 @@ api.interceptors.response.use(
       original._retry = true
       try {
         const { data } = await axios.post(
-          `${import.meta.env.VITE_API_BASE}/auth/refresh`,
+          `${import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'}/auth/refresh`,
           {},
           { withCredentials: true }
         )
