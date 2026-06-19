@@ -1,10 +1,11 @@
 """자동매매 알고리즘 단위 테스트."""
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
 
-from models.auto_trade import AutoTradeLog
+from models.auto_trade import AutoTradeConfig, AutoTradeLog
 from models.portfolio import Portfolio
 from models.trade import Trade
 from models.user import User
@@ -190,3 +191,71 @@ async def test_execute_paper_sell_raises_when_holding_quantity_is_zero(db_sessio
             signal_score=0.0,
             db=db_session,
         )
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_does_not_buy_when_cash_reserve_would_be_broken(db_session):
+    """현금 보유 한도 도달 시 BUY 후보가 있어도 매수하지 않는다."""
+    from services.auto_trade_service import run_cycle
+
+    # 1. 사용자 생성
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    # 2. AutoTradeConfig: total_budget=1,000,000, enabled=True, mode="paper", signal_threshold=0
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    # 3. Portfolio: 이미 900,000원 투자됨 (1주 × 평균단가 900,000)
+    #    _calculate_buying_power(1_000_000, 900_000) = 900_000 - 900_000 = 0 → 매수 불가
+    db_session.add(Portfolio(
+        user_id=user_id,
+        stock_code="000660",
+        stock_name="SK하이닉스",
+        quantity=1,
+        avg_price=900_000,
+        mode="paper",
+    ))
+    await db_session.flush()
+
+    # 4. AI 스크리닝은 BUY 신호(score=90)를 반환하도록 mock
+    buy_candidates = [{"code": "005930", "score": 90.0}]
+
+    # 현재가를 평균단가(900_000)와 같게 설정해 손절/익절 조건 미충족
+    # → SELL 단계는 실행되지 않고, BUY 단계만 가용 예산이 0이라 건너뜀
+    with patch(
+        "services.auto_trade_service._get_buy_candidates",
+        new=AsyncMock(return_value=buy_candidates),
+    ), patch(
+        "services.market_service.get_stock_current_price",
+        new=AsyncMock(return_value={"close": 900_000, "name": "SK하이닉스"}),
+    ), patch(
+        "services.ai_service.get_signal",
+        new=AsyncMock(return_value={"signal": "HOLD", "signal_score": 50}),
+    ):
+        result = await run_cycle(user_id=user_id, db=db_session)
+
+    # 5. 매수 실행 없어야 함
+    assert result["executed"] == 0, (
+        f"expected 0 executions but got {result['executed']}; "
+        f"no_trade_reason={result.get('no_trade_reason')}"
+    )
+    # 6. no_trade_reason 에 현금 보유 한도 관련 문구 포함
+    reason = result.get("no_trade_reason") or ""
+    assert "가용 예산" in reason or "현금 보유" in reason, (
+        f"expected cash-reserve reason but got: {reason!r}"
+    )

@@ -334,7 +334,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
         ))).scalars().all()
     ))
-    available = cfg.total_budget - used
+    available = _calculate_buying_power(cfg.total_budget, used)
 
     candidates: list[dict] = []
     held: set[str] = set()
@@ -381,16 +381,16 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
     # 매매 없는 경우 이유 설명
     no_trade_reason = None
     if not actions:
-        invested = cfg.total_budget - available
+        invested = used  # use the pre-calculated invested cost
         invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
             f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
         )
-        if not candidates:
+        if available <= 0:
+            no_trade_reason = f"가용 예산 부족 또는 현금 보유 한도 도달 (투자됨: {invested_str})"
+        elif not candidates:
             no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
         elif all(c["code"] in held for c in candidates):
             no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
-        elif available <= 0:
-            no_trade_reason = f"가용 예산 부족 (투자됨: {invested_str})"
         else:
             no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
 
