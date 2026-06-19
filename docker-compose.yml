@@ -21,13 +21,36 @@ services:
     ports:
       - "6379:6379"
 
+  db-init:
+    image: postgres:15-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-stocksense}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-stocksense}
+      POSTGRES_DB: ${POSTGRES_DB:-stocksense}
+      POSTGRES_TEST_DB: ${POSTGRES_TEST_DB:-stocksense_test}
+    command: >
+      sh -c 'set -eu;
+      if createdb "$${POSTGRES_TEST_DB}" 2>/tmp/createdb.err; then
+        echo "Created database $${POSTGRES_TEST_DB}";
+      elif grep -q "already exists" /tmp/createdb.err; then
+        echo "Database $${POSTGRES_TEST_DB} already exists";
+      else
+        cat /tmp/createdb.err;
+        exit 1;
+      fi'
+
   migrate:
     build: ./backend
     command: alembic upgrade head
     working_dir: /project
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_DB:-stocksense}
     volumes:
@@ -49,6 +72,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_DB:-stocksense}
+      TEST_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stocksense}:${POSTGRES_PASSWORD:-stocksense}@postgres:5432/${POSTGRES_TEST_DB:-stocksense_test}
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"

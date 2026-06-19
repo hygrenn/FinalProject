@@ -21,16 +21,15 @@ def _test_database_url() -> str:
         url = url.set(database=f"{database}_test")
     if not (url.database or "").endswith("_test"):
         raise RuntimeError(f"Refusing to run tests against non-test database: {url.database}")
-    return str(url)
+    return url.render_as_string(hide_password=False)
 
 
-os.environ["DATABASE_URL"] = _test_database_url()
+TEST_DB_URL = _test_database_url()
+os.environ["DATABASE_URL"] = TEST_DB_URL
 
 from api.middleware.rate_limit import limiter  # noqa: E402
 from core.database import Base, get_db  # noqa: E402
 from main import app  # noqa: E402
-
-TEST_DB_URL = os.environ["DATABASE_URL"]
 
 
 @pytest.fixture(autouse=True)

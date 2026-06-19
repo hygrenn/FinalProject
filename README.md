@@ -81,23 +81,37 @@ ML_UPLOAD_KEY=<서버와 동일한 키> python -m ml.generate_predictions \
 
 서버의 `.env`에도 동일한 `ML_UPLOAD_KEY`를 설정해야 합니다.
 
-## 테스트
+## DB 운영
 
-테스트 전 `stocksense_test` DB가 필요합니다:
+개발/데모 DB는 Docker PostgreSQL을 기준으로 사용합니다. 백엔드나 프론트엔드를 재시작해도 `pgdata` volume이 유지되는 동안 계정, 포트폴리오, 거래 기록은 유지됩니다.
 
 ```bash
-# Docker postgres 컨테이너 기준
-docker exec -it <postgres-container> psql -U stocksense -c "CREATE DATABASE stocksense_test;"
+# 인프라 실행
+docker compose up -d postgres redis
 
-# 또는 psql 직접 접속
-psql -U stocksense -c "CREATE DATABASE stocksense_test;"
+# 앱 DB migration + 테스트 DB 자동 생성까지 포함한 전체 실행
+docker compose up -d backend frontend
 ```
 
-테스트 실행:
+`docker-compose.yml`의 `db-init` 서비스가 `POSTGRES_TEST_DB`를 자동 생성합니다. 기본값은 `stocksense_test`입니다. backend 서비스에는 `TEST_DATABASE_URL`도 명시되어 있어, 로컬 shell에 잘못된 `TEST_DATABASE_URL`이 잡혀 있어도 Docker 테스트는 compose의 테스트 DB를 사용합니다. 따라서 테스트용 DB를 수동으로 `CREATE DATABASE` 할 필요가 없습니다.
+
+주의: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`는 PostgreSQL volume이 처음 만들어질 때만 반영됩니다. 이미 생성된 volume이 있는데 `.env`의 DB 계정/비밀번호를 바꾸면 인증 실패가 날 수 있습니다. 이 경우 기존 데이터를 보존하려면 `.env`를 volume 생성 당시 값으로 되돌리고, 초기화해도 괜찮으면 아래 리셋 명령을 사용합니다.
 
 ```bash
-cd backend
-pytest -q
+# 개발 DB 완전 초기화. 계정/거래 기록/포트폴리오 데이터가 모두 삭제됩니다.
+docker compose down -v
+docker compose up -d postgres redis
+docker compose run --rm db-init
+docker compose run --rm migrate
+```
+
+## 테스트
+
+테스트는 앱 DB가 아니라 `_test` suffix가 붙은 DB만 사용합니다. `TEST_DATABASE_URL`을 직접 지정하지 않으면 `DATABASE_URL`의 DB 이름 뒤에 `_test`를 붙여 사용합니다.
+
+```bash
+docker compose run --rm -v "$PWD:/project" -w /project -e PYTHONPATH=/project/backend backend \
+  sh -c 'pip install --no-cache-dir pytest==8.4.2 pytest-asyncio==1.4.0 >/tmp/test-deps.log && pytest -q tests'
 ```
 
 ## Celery 워커 (선택)
