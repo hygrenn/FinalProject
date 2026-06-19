@@ -91,19 +91,12 @@ export function PortfolioTab() {
         )}
       </div>
 
-      {/* 소스 배지 — holding_source / performance_source 있을 때만 */}
-      {(holdingSource || performanceSource) && (
+      {/* 소스 배지 — holdingSource가 없을 때만 표시 (description box와 중복 방지) */}
+      {!holdingSource && performanceSource && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {holdingSource && (
-            <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
-              보유 현황: <span className="text-foreground">{holdingSource}</span>
-            </div>
-          )}
-          {performanceSource && (
-            <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
-              성과 지표: <span className="text-foreground">{performanceSource}</span>
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
+            성과 지표: <span className="text-foreground">{performanceSource}</span>
+          </div>
         </div>
       )}
 

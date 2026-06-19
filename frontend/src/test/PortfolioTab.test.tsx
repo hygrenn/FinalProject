@@ -38,7 +38,7 @@ describe('PortfolioTab', () => {
 
   it('renders data source labels', async () => {
     render(<PortfolioTab />)
-    // text appears in both description box and badge — use getAllByText
+    // text appears in description box (badge is hidden when holdingSource is set)
     await waitFor(() => expect(screen.getAllByText('KIS 모의투자 계좌').length).toBeGreaterThanOrEqual(1))
     expect(screen.getAllByText('앱 거래 기록 기준').length).toBeGreaterThanOrEqual(1)
   })
