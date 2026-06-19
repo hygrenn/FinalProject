@@ -412,7 +412,7 @@ export function BacktestTab() {
                         contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', fontSize: 11 }}
                         formatter={(v) => [`${Number(v ?? 0).toLocaleString()}원`, '자산']}
                       />
-                      <Line type="monotone" dataKey="equity" stroke="hsl(var(--primary))" dot={false} strokeWidth={1.5} />
+                      <Line type="monotone" dataKey="equity" stroke="#58a6ff" dot={false} strokeWidth={1.5} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
