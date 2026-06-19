@@ -9,7 +9,7 @@ from core.database import get_db
 from core.security import decode_access_token
 from models.user import User
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 _bearer_optional = HTTPBearer(auto_error=False)
 
 
@@ -32,9 +32,12 @@ async def get_optional_user(
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
     user_id = decode_access_token(credentials.credentials)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")

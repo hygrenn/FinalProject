@@ -7,6 +7,7 @@ import { BacktestTab } from './BacktestTab/BacktestTab'
 import { RecommendTab } from './RecommendTab/RecommendTab'
 import { ScreenerTab } from './ScreenerTab/ScreenerTab'
 import { MarketTab } from './MarketTab/MarketTab'
+import { AutoTradePanel } from '@/components/AutoTrade/AutoTradePanel'
 import { cn } from '@/lib/utils'
 import type { TabId } from '@/types'
 
@@ -19,6 +20,7 @@ const ALL_TABS: { id: TabId; label: string }[] = [
   { id: 'portfolio', label: '포트폴리오' },
   { id: 'screener', label: '스크리너' },
   { id: 'backtest', label: '백테스트' },
+  { id: 'autotrade', label: '자동매매' },
 ]
 
 export function MainPanel() {
@@ -51,6 +53,7 @@ export function MainPanel() {
         {activeTab === 'screener'   && <ScreenerTab />}
         {activeTab === 'backtest'   && <BacktestTab />}
         {activeTab === 'market'     && <MarketTab />}
+        {activeTab === 'autotrade'  && <AutoTradePanel />}
       </div>
     </div>
   )

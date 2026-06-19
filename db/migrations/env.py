@@ -11,6 +11,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from core.database import Base
+from models.auto_trade import AutoTradeConfig, AutoTradeLog  # noqa: F401
 from models.ai_signal import AISignalHistory  # noqa: F401
 from models.backtest import BacktestResult  # noqa: F401
 from models.portfolio import Portfolio  # noqa: F401
