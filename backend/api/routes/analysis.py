@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Query, Request
 
 from api.middleware.rate_limit import limiter
-from services import comprehensive_service, fundamental_service, investor_service, market_index_service, recommend_service, screener_service, sector_service, stock_data_service
+from services import comprehensive_service, fundamental_service, investor_service, market_index_service, recommend_service, screener_service, sector_service, stock_data_service, support_resistance_service, anomaly_service, trendline_service
 
 router = APIRouter()
 
@@ -67,6 +67,27 @@ async def get_sector_heatmap(request: Request):
 async def get_investor_trend(request: Request, code: str, days: int = Query(default=10, ge=5, le=30)):
     """종목별 외국인·기관·개인 순매수 동향 (최근 N거래일)."""
     return await investor_service.get_investor_trend(code, days)
+
+
+@router.get("/support-resistance/{code}")
+@limiter.limit("30/minute")
+async def get_support_resistance(request: Request, code: str):
+    """K-means 클러스터링 기반 지지/저항 레벨."""
+    return await support_resistance_service.get_support_resistance(code)
+
+
+@router.get("/anomaly/{code}")
+@limiter.limit("20/minute")
+async def get_anomaly(request: Request, code: str):
+    """Autoencoder 기반 이상 패턴 감지."""
+    return await anomaly_service.get_anomaly(code)
+
+
+@router.get("/trendline/{code}")
+@limiter.limit("30/minute")
+async def get_trendline(request: Request, code: str):
+    """피크·저점 선형회귀 기반 추세선 자동 감지."""
+    return await trendline_service.get_trendline(code)
 
 
 @router.get("/screener")

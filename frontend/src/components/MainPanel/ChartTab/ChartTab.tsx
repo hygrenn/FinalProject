@@ -6,9 +6,13 @@ import { useStockWebSocket } from '@/hooks/useStockWebSocket'
 import { StockInfoBar } from './StockInfoBar'
 import { CandleChart } from './CandleChart'
 import { PredictionOverlay } from './PredictionOverlay'
+import { SupportResistanceOverlay } from './SupportResistanceOverlay'
+import { TrendlineOverlay } from './TrendlineOverlay'
+import { AnomalyChart } from './AnomalyChart'
 import { PatternBadges } from './PatternBadges'
 import { RSIChart } from './RSIChart'
 import { MACDChart } from './MACDChart'
+import { cn } from '@/lib/utils'
 import { useMemo, useState, useEffect } from 'react'
 import type { IChartApi } from 'lightweight-charts'
 import type { Candle, CandlePattern, Prediction, StockDetail } from '@/types'
@@ -36,6 +40,18 @@ const PATTERN_INFO: Record<string, { name: string; description: string }> = {
   haramicross: { name: '잉태십자형', description: '잉태형에 도지가 결합된 강한 전환 신호' },
 }
 
+// ─── AI 분석 타입 ─────────────────────────────────────────────────────────────
+
+interface SRLevel { price: number; strength: number }
+interface SRData  { support: SRLevel[]; resistance: SRLevel[] }
+
+interface TrendPoint { date: string; price: number }
+interface TrendLine  { label: string; color: string; r2: number; points: TrendPoint[]; pivots: TrendPoint[] }
+interface TrendlineData { lines: TrendLine[]; available: boolean }
+
+interface AnomalyScore  { date: string; score: number }
+interface AnomalyData   { scores: AnomalyScore[]; threshold: number; available: boolean }
+
 interface PatternResponse {
   patterns?: { name: string; direction: string; value: number }[]
 }
@@ -57,6 +73,14 @@ export function ChartTab() {
   const [interval, setInterval] = useState('day')
   const [period, setPeriod] = useState('1y')
   const [loadingIntraday, setLoadingIntraday] = useState(false)
+
+  // AI 분석 오버레이 상태
+  const [srData, setSrData]           = useState<SRData | null>(null)
+  const [trendlineData, setTrendlineData] = useState<TrendlineData | null>(null)
+  const [anomalyData, setAnomalyData] = useState<AnomalyData | null>(null)
+  const [showSR, setShowSR]           = useState(true)
+  const [showTrend, setShowTrend]     = useState(true)
+  const [showAnomaly, setShowAnomaly] = useState(false)
 
   useEffect(() => {
     if (!selectedStock?.code) return
@@ -107,6 +131,18 @@ export function ChartTab() {
         }
       }))
     }).catch(() => {})
+
+    // AI 분석 3종 병렬 요청
+    Promise.all([
+      api.get<SRData>(`/analysis/support-resistance/${code}`).catch(() => null),
+      api.get<TrendlineData>(`/analysis/trendline/${code}`).catch(() => null),
+      api.get<AnomalyData>(`/analysis/anomaly/${code}`).catch(() => null),
+    ]).then(([sr, tl, an]) => {
+      if (cancelled) return
+      if (sr)  setSrData(sr.data)
+      if (tl)  setTrendlineData(tl.data)
+      if (an)  setAnomalyData(an.data)
+    })
 
     api.get<PredictResponse>(`/ai/${code}/predict`).then(({ data }) => {
       const p = data?.prediction
@@ -163,7 +199,7 @@ export function ChartTab() {
           realtimeChangePct={realtimePrice?.change_pct}
         />
       )}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 flex-wrap">
         {INTERVALS.map(({ key, label }) => (
           <button
             key={key}
@@ -177,8 +213,28 @@ export function ChartTab() {
             {label}
           </button>
         ))}
+        <div className="ml-auto flex items-center gap-1">
+          {[
+            { key: 'sr',      label: 'S/R',   active: showSR,      set: setShowSR },
+            { key: 'trend',   label: '추세선', active: showTrend,   set: setShowTrend },
+            { key: 'anomaly', label: '이상감지', active: showAnomaly, set: setShowAnomaly },
+          ].map(({ key, label, active, set }) => (
+            <button
+              key={key}
+              onClick={() => set((v) => !v)}
+              className={cn(
+                'px-2 py-0.5 text-[11px] rounded border transition-colors',
+                active
+                  ? 'bg-primary/20 border-primary/50 text-primary'
+                  : 'border-border text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {loadingIntraday && (
-          <span className="ml-auto text-xs text-yellow-400/80">
+          <span className="text-xs text-yellow-400/80">
             분봉 불러오는 중 · 장 중(09:00~15:30)에만 당일 분봉 조회 가능 · 임시로 일봉 표시
           </span>
         )}
@@ -212,6 +268,8 @@ export function ChartTab() {
               lastCandleTime={lastCandleTime}
             />
           )}
+          {showSR && <SupportResistanceOverlay chart={chart} candles={candles} data={srData} />}
+          {showTrend && <TrendlineOverlay chart={chart} data={trendlineData} />}
         </div>
         <div className="flex-1 min-h-0">
           <RSIChart data={rsiData} />
@@ -219,6 +277,11 @@ export function ChartTab() {
         <div className="flex-1 min-h-0">
           <MACDChart data={macdData} />
         </div>
+        {showAnomaly && (
+          <div className="flex-1 min-h-0">
+            <AnomalyChart data={anomalyData} />
+          </div>
+        )}
       </div>
     </div>
   )

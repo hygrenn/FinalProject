@@ -27,6 +27,11 @@ interface HoldingItem {
   return_pct: number
 }
 
+interface AccountConfig {
+  mode: 'paper' | 'real'
+  account_no: string
+}
+
 interface AccountData {
   mode: 'paper' | 'real'
   account_no: string
@@ -58,9 +63,21 @@ interface AccountPanelProps {
 export function AccountPanel({ onClose }: AccountPanelProps) {
   const { user } = useAuthStore()
   const lastOrderAt = useUIStore((s) => s.lastOrderAt)
+  const [accountConfig, setAccountConfig] = useState<AccountConfig | null>(null)
   const [data, setData] = useState<AccountData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const fetchAccountConfig = useCallback(async () => {
+    if (!user) return
+    try {
+      const { data: res } = await api.get<AccountConfig>('/account/config')
+      setAccountConfig(res)
+    } catch {
+      setAccountConfig(null)
+    }
+  }, [user])
+
   const fetchBalance = useCallback(async () => {
     if (!user) return
     setLoading(true)
@@ -77,9 +94,14 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   }, [user])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void fetchBalance() }, 0)
+    const timer = window.setTimeout(() => {
+      void fetchAccountConfig()
+      void fetchBalance()
+    }, 0)
     return () => window.clearTimeout(timer)
-  }, [fetchBalance])
+  }, [fetchAccountConfig, fetchBalance])
+
+  const displayMode = data?.mode ?? accountConfig?.mode ?? (user?.mode === 'real' ? 'real' : 'paper')
 
   return (
     <div className="fixed inset-y-0 right-0 w-80 bg-card border-l border-border shadow-2xl z-50 flex flex-col">
@@ -89,7 +111,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
           <span className="font-semibold text-sm">내 계좌</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={fetchBalance} disabled={loading}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { void fetchAccountConfig(); void fetchBalance() }} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
@@ -129,7 +151,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             <p>
               현재 조회 모드:{' '}
               <span className="font-medium text-foreground">
-                {(data?.mode ?? user.mode) === 'paper' ? '모의투자' : '실계좌'}
+                {displayMode === 'paper' ? '모의투자' : '실계좌'}
               </span>
             </p>
             <p>실계좌/모의계좌 전환은 리스크/설정 화면에서만 변경합니다.</p>

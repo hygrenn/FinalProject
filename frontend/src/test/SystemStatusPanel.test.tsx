@@ -21,7 +21,7 @@ const mockStatusNoKis: SystemStatusResponse = {
   backend: { ok: true, message: '백엔드 정상' },
   auth: { logged_in: false, email: null },
   kis: { mode: null, configured: false, account_no: null, message: 'KIS API 키 미설정' },
-  account: { ok: false, holdings_count: null, data_source: null, message: 'KIS API 키 미설정으로 잔고 조회 불가' },
+  account: { ok: null, holdings_count: null, data_source: null, message: 'login_required' },
   portfolio: { ok: null, holding_source: null, performance_source: null, message: 'login_required' },
   ai: { prediction_source: 'unavailable', message: 'LSTM 가중치 없음 — AI 예측 비활성' },
   checked_at: '2026-06-19T10:00:00+09:00',
@@ -42,6 +42,7 @@ describe('SystemStatusPanel', () => {
   it('renders panel title', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: mockStatusOk })
     render(<SystemStatusPanel onClose={onClose} />)
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/system/status'))
     expect(screen.getByRole('dialog', { name: '시스템 상태 패널' })).toBeInTheDocument()
     expect(screen.getByText('시스템 상태')).toBeInTheDocument()
   })
@@ -94,6 +95,7 @@ describe('SystemStatusPanel', () => {
   it('calls onClose when close button clicked', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: mockStatusOk })
     render(<SystemStatusPanel onClose={onClose} />)
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/system/status'))
     fireEvent.click(screen.getByRole('button', { name: '닫기' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })

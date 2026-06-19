@@ -40,6 +40,7 @@ describe('AccountPanel', () => {
 
   it('renders account-mode-info element', async () => {
     render(<AccountPanel onClose={() => {}} />)
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/trades?limit=10'))
     const modeInfo = screen.getByTestId('account-mode-info')
     expect(modeInfo).toBeInTheDocument()
   })
@@ -53,16 +54,16 @@ describe('AccountPanel', () => {
     })
   })
 
-  it('account-mode-info shows mode label from user store when data not yet loaded', () => {
-    // Before API resolves the user store mode (demo) is used
-    // user.mode === 'demo' → neither 'paper' nor something else, so label is '실계좌'
-    // But we can still check the element is present and contains a mode label
+  it('account-mode-info defaults demo user mode to paper when data is not yet loaded', async () => {
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === '/trades?limit=10') return Promise.resolve({ data: [] })
+      return new Promise(() => {})
+    })
     render(<AccountPanel onClose={() => {}} />)
+    expect(await screen.findByText('최근 주문 내역이 없습니다')).toBeInTheDocument()
     const modeInfo = screen.getByTestId('account-mode-info')
-    // The element is rendered immediately (user is set in beforeEach)
     expect(modeInfo).toBeInTheDocument()
-    // user.mode === 'demo' which is not 'paper', so initial label is '실계좌'
-    expect(modeInfo.textContent).toContain('실계좌')
+    expect(modeInfo.textContent).toContain('모의투자')
   })
 
   it('account-mode-info shows paper mode label when user mode is paper', async () => {
@@ -94,6 +95,7 @@ describe('AccountPanel', () => {
 
   it('account-mode-info shows settings navigation hint text', async () => {
     render(<AccountPanel onClose={() => {}} />)
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/trades?limit=10'))
     const modeInfo = screen.getByTestId('account-mode-info')
     expect(modeInfo.textContent).toContain('실계좌/모의계좌 전환은 리스크/설정 화면에서만 변경합니다.')
   })

@@ -18,6 +18,7 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
   const [priceType, setPriceType] = useState<'MARKET' | 'LIMIT'>('LIMIT')
   const [quantity, setQuantity] = useState('1')
   const [price, setPrice] = useState(String(stock.price ?? 0))
+  const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [account, setAccount] = useState<{ mode: 'paper' | 'real'; account_no: string } | null>(null)
@@ -42,7 +43,8 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
 
   const submitOrder = async () => {
     setError(null)
-    setSubmitted(true)
+    setSubmitting(true)
+    setSubmitted(false)
     try {
       await api.post('/trades/order', {
         stock_code: stock.code,
@@ -52,11 +54,13 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
         price: priceType === 'LIMIT' ? Number(price) : undefined,
       })
       notifyOrderPlaced()
+      setSubmitted(true)
       setTimeout(() => { setSubmitted(false); closeModal() }, 1500)
     } catch (err: unknown) {
-      setSubmitted(false)
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(msg ?? '주문 처리 중 오류가 발생했습니다')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -126,6 +130,7 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
                 <label className="text-xs text-muted-foreground">주문가격</label>
                 <Input
                   type="number"
+                  disabled={submitting}
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   className="mt-1"
@@ -138,6 +143,7 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
               <Input
                 type="number"
                 min="1"
+                disabled={submitting}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 className="mt-1"
@@ -155,12 +161,13 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
             )}
 
             <div className="flex gap-2 pt-1">
-              <Button type="button" variant="outline" className="flex-1" onClick={closeModal}>취소</Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={closeModal} disabled={submitting}>취소</Button>
               <Button
                 type="submit"
+                disabled={submitting}
                 className={cn('flex-1', isBuy ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600')}
               >
-                {confirmingReal ? '실계좌 주문 확인' : '주문'}
+                {submitting ? '주문 요청 중...' : confirmingReal ? '실계좌 주문 확인' : '주문'}
               </Button>
             </div>
           </form>

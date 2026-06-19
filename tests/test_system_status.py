@@ -54,8 +54,9 @@ async def test_status_no_kis_no_auth(client):
     assert body["kis"]["configured"] is False
     assert body["kis"]["account_no"] is None
 
-    # account 조회 불가
-    assert body["account"]["ok"] is False
+    # 비로그인 상태에서는 account 잔고 count를 조회하지 않음
+    assert body["account"]["ok"] is None
+    assert body["account"]["message"] == "login_required"
 
     # 민감 정보 노출 없음 — 실제 키 값이나 인증 토큰이 포함되면 안 됨
     # 환경변수 이름(SYSTEM_KIS_APP_KEY) 자체는 설명 목적으로 허용하되,
@@ -122,7 +123,11 @@ async def test_status_kis_configured_balance_fail(client):
     """잔고 조회 실패 시 ok=False, 민감 정보 미노출."""
     from fastapi import HTTPException
 
-    app.dependency_overrides[get_optional_user] = lambda: None
+    import uuid
+    mock_user = MagicMock()
+    mock_user.id = uuid.uuid4()
+    mock_user.email = "fail@example.com"
+    app.dependency_overrides[get_optional_user] = lambda: mock_user
 
     try:
         with patch("api.routes.system.settings.SYSTEM_KIS_APP_KEY", "fake_key"), \

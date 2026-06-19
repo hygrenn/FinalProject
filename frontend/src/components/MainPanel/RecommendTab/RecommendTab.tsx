@@ -73,6 +73,7 @@ export function RecommendTab() {
   const [focusedCode, setFocusedCode] = useState<string | null>(null)
 
   const fetchRanking = useCallback(async () => {
+    await Promise.resolve()
     setLoading(true)
     setFetchError(null)
     try {

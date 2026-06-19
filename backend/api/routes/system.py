@@ -62,7 +62,7 @@ async def get_system_status(
     configured = _kis_configured()
     if configured:
         mode = settings.SYSTEM_KIS_MODE
-        masked_account = mask_account_no(settings.SYSTEM_KIS_ACCOUNT_NO)
+        masked_account = mask_account_no(settings.SYSTEM_KIS_ACCOUNT_NO) if user else None
         kis = {
             "mode": mode,
             "configured": True,
@@ -78,7 +78,14 @@ async def get_system_status(
         }
 
     # 4. 계좌 잔고 상태
-    if not configured:
+    if not user:
+        account = {
+            "ok": None,
+            "holdings_count": None,
+            "data_source": None,
+            "message": "login_required",
+        }
+    elif not configured:
         account = {
             "ok": False,
             "holdings_count": None,
