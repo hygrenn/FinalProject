@@ -41,7 +41,7 @@ async def get_top_picks(request: Request):
 async def get_signals_history(
     request: Request, code: str, db: AsyncSession = Depends(get_db)
 ):
-    cutoff = datetime.utcnow() - timedelta(days=30)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     result = await db.execute(
         select(AISignalHistory)
         .where(AISignalHistory.stock_code == code)

@@ -68,6 +68,11 @@ class Settings(BaseSettings):
                 f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
                 f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
             )
+        if self.APP_ENV == "production" and self.SECRET_KEY == "dev-secret-key-change-in-production":
+            raise ValueError(
+                "SECRET_KEY must be changed from the default value in production. "
+                "Set a strong random SECRET_KEY in your .env file."
+            )
         return self
 
     model_config = {

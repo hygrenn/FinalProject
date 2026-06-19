@@ -1,5 +1,8 @@
+import json
 import re
 import uuid
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -16,6 +19,15 @@ from models.user import User
 from services import kis_service, risk_service
 from services.market_service import get_stock_current_price
 from tasks.order_tasks import poll_order_fill
+
+_STOCK_NAMES_PATH = Path(__file__).resolve().parents[2] / "ml" / "stock_names.json"
+
+
+@lru_cache(maxsize=1)
+def _load_stock_names() -> dict[str, str]:
+    if _STOCK_NAMES_PATH.exists():
+        return json.loads(_STOCK_NAMES_PATH.read_text(encoding="utf-8"))
+    return {}
 
 router = APIRouter()
 
@@ -105,6 +117,7 @@ async def place_order(
     trade = Trade(
         user_id=user.id,
         stock_code=body.stock_code,
+        stock_name=_load_stock_names().get(body.stock_code),
         order_type=body.order_type,
         price_type=body.price_type,
         quantity=body.quantity,
@@ -182,7 +195,7 @@ async def cancel_trade(
     trade = result.scalar_one_or_none()
     if not trade:
         raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
-    if trade.status != "PENDING":
+    if trade.status not in ("PENDING", "PARTIALLY_FILLED"):
         raise HTTPException(status_code=400, detail=f"취소 불가 상태: {trade.status}")
     if trade.mode != settings.SYSTEM_KIS_MODE:
         raise HTTPException(

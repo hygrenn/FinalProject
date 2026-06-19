@@ -1,9 +1,13 @@
 # backend/services/kis_account_service.py
+import logging
+
 import httpx
 from fastapi import HTTPException
 
 from core.config import settings
 from services.kis_token_service import get_access_token
+
+_logger = logging.getLogger(__name__)
 
 _REAL_URL = "https://openapi.koreainvestment.com:9443"
 _PAPER_URL = "https://openapivts.koreainvestment.com:29443"
@@ -75,7 +79,8 @@ async def get_account_balance(mode: str) -> dict:
             resp.raise_for_status()
             body = resp.json()
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"KIS 잔고 조회 실패: {exc.response.text}") from exc
+        _logger.error("KIS 잔고 조회 실패 (status=%s): %s", exc.response.status_code, exc.response.text)
+        raise HTTPException(status_code=502, detail=f"KIS 잔고 조회 실패 (HTTP {exc.response.status_code})") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"KIS 연결 실패: {exc}") from exc
 
