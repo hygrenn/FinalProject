@@ -2,7 +2,6 @@
 import uuid
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
 
 from models.auto_trade import AutoTradeLog
@@ -153,3 +152,41 @@ async def test_execute_paper_buy_updates_average_price_and_log_amount(db_session
     # 6. 반환값 검증
     assert result["quantity"] == 3, f"return quantity expected 3, got {result['quantity']}"
     assert result["total_amount"] == 180_000, f"return total_amount expected 180000, got {result['total_amount']}"
+
+
+@pytest.mark.asyncio
+async def test_execute_paper_sell_raises_when_holding_quantity_is_zero(db_session):
+    """SELL 시 보유 수량이 0이면 ValueError를 발생시킨다."""
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    # Portfolio quantity=0 (dirty data scenario)
+    db_session.add(Portfolio(
+        user_id=user_id,
+        stock_code="005380",
+        stock_name="현대차",
+        quantity=0,
+        avg_price=100_000,
+        mode="paper",
+    ))
+    await db_session.flush()
+
+    with pytest.raises(ValueError, match="데이터 오염"):
+        await _execute_paper_order(
+            user_id=user_id,
+            stock_code="005380",
+            stock_name="현대차",
+            order_type="SELL",
+            quantity=1,
+            price=105_000,
+            reason="손절",
+            mode="paper",
+            signal_score=0.0,
+            db=db_session,
+        )

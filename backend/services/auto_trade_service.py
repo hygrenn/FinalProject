@@ -243,8 +243,6 @@ async def _execute_paper_order(
     holding = result.scalar_one_or_none()
 
     if order_type == "BUY":
-        trade.quantity = executed_qty
-        trade.filled_quantity = executed_qty
         if holding is None:
             db.add(Portfolio(user_id=user_id, stock_code=stock_code, stock_name=stock_name,
                              quantity=executed_qty, avg_price=price, mode=mode))
@@ -258,7 +256,7 @@ async def _execute_paper_order(
             raise ValueError(f"SELL 실패: {stock_code} 보유 없음")
         executed_qty = min(quantity, holding.quantity)
         if executed_qty <= 0:
-            raise ValueError(f"SELL 실패: {stock_code} 보유 수량 없음")
+            raise ValueError(f"SELL 실패: {stock_code} 보유 수량이 0 (데이터 오염 의심)")
         trade.realized_pnl = int((price - float(holding.avg_price)) * executed_qty)
         trade.filled_quantity = executed_qty
         trade.quantity = executed_qty
