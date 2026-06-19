@@ -10,7 +10,7 @@ def test_allocate_caps_single_stock_at_30_percent():
     result = _allocate(candidates, available=500_000, total_budget=1_000_000)
 
     assert len(result) == 1
-    assert result[0]["alloc"] <= 300_000  # 30% of 1_000_000
+    assert result[0]["alloc"] == 300_000  # capped at 30% of 1_000_000
 
 
 def test_calculate_buying_power_reserves_cash():
