@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 # 종목코드 → 이름 (JSON 파일 기반, 없으면 빈 dict)
 _NAMES_PATH = Path(__file__).parent.parent / "ml" / "stock_names.json"
@@ -18,18 +18,56 @@ try:
 except Exception:
     _STOCK_NAMES = {}
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi import HTTPException
 from models.ai_signal import AISignalHistory
 from models.auto_trade import AutoTradeConfig, AutoTradeLog
 from models.portfolio import Portfolio
 from models.trade import Trade
+from models.user import User
+from services import risk_service
 
 logger = logging.getLogger(__name__)
 
 _MAX_SINGLE_STOCK_PCT = 0.30   # 한 종목에 총예산의 최대 30%
 _CASH_RESERVE_PCT    = 0.10   # 총예산의 10%는 현금 보유
+
+
+async def _acquire_run_lock(user_id: UUID) -> str | None:
+    from core.redis_client import get_redis
+    redis = await get_redis()
+    token = uuid4().hex
+    locked = await redis.set(f"auto_trade:lock:{user_id}", token, ex=360, nx=True)
+    return token if locked else None
+
+
+async def _release_run_lock(user_id: UUID, token: str) -> None:
+    from core.redis_client import get_redis
+    redis = await get_redis()
+    key = f"auto_trade:lock:{user_id}"
+    script = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+    end
+    return 0
+    """
+    await redis.eval(script, 1, key, token)
+
+
+def _calculate_buying_power(total_budget: int, used_cost: int) -> int:
+    """현금 보유 비율을 제외한 실제 매수 가용 금액 계산.
+
+    Args:
+        total_budget: 총 투자 예산 (원)
+        used_cost:    이미 투자된 금액 (보유 종목 평가액 합산, 원)
+
+    Returns:
+        추가 매수 가능 금액 (음수가 되는 경우 0 반환)
+    """
+    investable_limit = int(total_budget * (1 - _CASH_RESERVE_PCT))
+    return max(0, investable_limit - used_cost)
 
 
 async def get_config(user_id: UUID, db: AsyncSession) -> AutoTradeConfig:
@@ -47,7 +85,7 @@ async def get_config(user_id: UUID, db: AsyncSession) -> AutoTradeConfig:
 
 async def update_config(user_id: UUID, data: dict, db: AsyncSession) -> AutoTradeConfig:
     cfg = await get_config(user_id, db)
-    allowed = {"enabled", "mode", "total_budget", "stop_loss_pct", "take_profit_pct"}
+    allowed = {"enabled", "mode", "total_budget", "stop_loss_pct", "take_profit_pct", "max_positions", "signal_threshold"}
     for key, val in data.items():
         if key in allowed:
             setattr(cfg, key, val)
@@ -202,19 +240,10 @@ async def _execute_paper_order(
     order_type: str, quantity: int, price: int,
     reason: str, mode: str, signal_score: float,
     db: AsyncSession,
+    warning: str | None = None,
 ) -> dict[str, Any]:
     if quantity <= 0 or price <= 0:
         raise ValueError(f"invalid quantity={quantity} or price={price}")
-
-    trade = Trade(
-        user_id=user_id, stock_code=stock_code, stock_name=stock_name,
-        order_type=order_type, price_type="MARKET",
-        quantity=quantity, executed_price=price, filled_quantity=quantity,
-        status="FILLED", mode=mode,
-        ai_signal_at_order=reason[:10] if reason else None,
-        filled_at=datetime.now(timezone.utc),
-    )
-    db.add(trade)
 
     result = await db.execute(
         select(Portfolio).where(
@@ -224,36 +253,60 @@ async def _execute_paper_order(
         )
     )
     holding = result.scalar_one_or_none()
+    executed_qty = quantity
+
+    if order_type == "SELL":
+        if holding is None:
+            raise ValueError(f"SELL 실패: {stock_code} 보유 없음")
+        executed_qty = min(quantity, holding.quantity)
+        if executed_qty <= 0:
+            raise ValueError(f"SELL 실패: {stock_code} 보유 수량이 0 (데이터 오염 의심)")
+
+    trade = Trade(
+        user_id=user_id, stock_code=stock_code, stock_name=stock_name,
+        order_type=order_type, price_type="MARKET",
+        quantity=executed_qty, executed_price=price, filled_quantity=executed_qty,
+        status="FILLED", mode=mode,
+        ai_signal_at_order=reason[:10] if reason else None,
+        filled_at=datetime.now(timezone.utc),
+    )
+    db.add(trade)
 
     if order_type == "BUY":
         if holding is None:
             db.add(Portfolio(user_id=user_id, stock_code=stock_code, stock_name=stock_name,
-                             quantity=quantity, avg_price=price, mode=mode))
+                             quantity=executed_qty, avg_price=price, mode=mode))
         else:
-            new_qty = holding.quantity + quantity
-            new_avg = (float(holding.avg_price) * holding.quantity + price * quantity) / new_qty
+            new_qty = holding.quantity + executed_qty
+            new_avg = (float(holding.avg_price) * holding.quantity + price * executed_qty) / new_qty
             holding.quantity = new_qty
             holding.avg_price = round(new_avg, 2)
     elif order_type == "SELL":
-        if holding is None:
-            raise ValueError(f"SELL 실패: {stock_code} 보유 없음")
-        sell_qty = min(quantity, holding.quantity)
-        trade.realized_pnl = int((price - float(holding.avg_price)) * sell_qty)
-        trade.filled_quantity = sell_qty
-        trade.quantity = sell_qty
-        holding.quantity -= sell_qty
+        trade.realized_pnl = int((price - float(holding.avg_price)) * executed_qty)
+        trade.filled_quantity = executed_qty
+        trade.quantity = executed_qty
+        holding.quantity -= executed_qty
         if holding.quantity <= 0:
             await db.delete(holding)
 
+    if order_type == "BUY" and warning:
+        reason_str = f"{reason} [WARN: {warning[:80]}]"
+    else:
+        reason_str = reason
+
     db.add(AutoTradeLog(
         user_id=user_id, stock_code=stock_code, stock_name=stock_name,
-        action=order_type, quantity=quantity, price=price,
-        total_amount=quantity * price, reason=reason,
+        action=order_type, quantity=executed_qty, price=price,
+        total_amount=executed_qty * price, reason=reason_str,
         signal_score=signal_score, mode=mode,
     ))
     await db.commit()
-    return {"action": order_type, "stock_code": stock_code, "stock_name": stock_name,
-            "quantity": quantity, "price": price, "total_amount": quantity * price, "reason": reason}
+    ret = {"action": order_type, "stock_code": stock_code, "stock_name": stock_name,
+           "quantity": executed_qty, "price": price, "total_amount": executed_qty * price,
+           "reason": reason_str}
+    if warning:
+        ret["warning"] = warning
+    return ret
 
 
 async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | None = None) -> dict[str, Any]:
@@ -266,122 +319,173 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
     if cfg.mode == "real":
         return {"skipped": True, "reason": "real_mode_not_supported", "message": "자동매매는 모의투자 전용입니다."}
 
-    actions: list[dict] = []
+    user = await db.get(User, user_id)
+    if user is None:
+        return {"skipped": True, "reason": "user_not_found"}
 
-    # ── 1. 기존 보유 포지션: 손절/익절/AI SELL ────────────────────────
-    holdings_res = await db.execute(
-        select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == cfg.mode)
-    )
-    for holding in holdings_res.scalars().all():
-        try:
-            price_data = await get_stock_current_price(holding.stock_code)
-            cur = price_data.get("close", 0)
-        except Exception:
-            continue
-        if cur <= 0:
-            continue
+    lock_token = await _acquire_run_lock(user_id)
+    if not lock_token:
+        return {"skipped": True, "reason": "already_running"}
+    try:
+        actions: list[dict] = []
+        diagnostics: dict[str, Any] = {
+            "signal_fetch_failed": 0,
+            "price_fetch_failed": 0,
+            "risk_blocked": 0,
+            "below_threshold": 0,
+            "max_positions_reached": False,
+        }
 
-        avg = float(holding.avg_price)
-        pct = (cur - avg) / avg * 100.0
-        sell_reason, sell_score = None, 0.0
-
-        if pct <= -cfg.stop_loss_pct:
-            sell_reason = f"손절({pct:.1f}%)"
-        elif pct >= cfg.take_profit_pct:
-            sell_reason = f"익절(+{pct:.1f}%)"
-        else:
-            try:
-                sig = await get_signal(holding.stock_code, db)
-                sell_score = float(sig.get("signal_score", 0))
-                if sig.get("signal") == "SELL":
-                    sell_reason = f"AI SELL({sell_score:.0f}점)"
-            except Exception:
-                pass
-
-        if sell_reason:
-            try:
-                log = await _execute_paper_order(
-                    user_id, holding.stock_code, holding.stock_name or "",
-                    "SELL", holding.quantity, cur,
-                    sell_reason, cfg.mode, sell_score, db,
-                )
-                actions.append(log)
-            except Exception as exc:
-                logger.error("매도 실패 %s: %s", holding.stock_code, exc)
-
-    # ── 2. AI 스크리닝 → 신규 매수 ────────────────────────────────────
-    used = sum(int(float(h.avg_price) * h.quantity) for h in (
-        (await db.execute(select(Portfolio).where(
-            Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
-        ))).scalars().all()
-    ))
-    available = cfg.total_budget - used
-
-    candidates: list[dict] = []
-    held: set[str] = set()
-
-    if available > 0:
-        candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
-
-        held_res = await db.execute(
-            select(Portfolio.stock_code).where(
-                Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
-            )
+        # ── 1. 기존 보유 포지션: 손절/익절/AI SELL ────────────────────────
+        holdings_res = await db.execute(
+            select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == cfg.mode)
         )
-        held = {r[0] for r in held_res.fetchall()}
-        fresh = [c for c in candidates if c["code"] not in held]
-
-        allocations = _allocate(fresh, available, cfg.total_budget)
-
-        for alloc in allocations:
-            if available <= 0:
-                break
+        for holding in holdings_res.scalars().all():
             try:
-                price_data = await get_stock_current_price(alloc["code"])
+                price_data = await get_stock_current_price(holding.stock_code)
                 cur = price_data.get("close", 0)
-                name = price_data.get("name", alloc["code"])
             except Exception:
+                diagnostics["price_fetch_failed"] += 1
                 continue
             if cur <= 0:
                 continue
 
-            qty = alloc["alloc"] // cur
-            if qty < 1:
-                continue
+            avg = float(holding.avg_price)
+            pct = (cur - avg) / avg * 100.0
+            sell_reason, sell_score = None, 0.0
 
-            try:
-                log = await _execute_paper_order(
-                    user_id, alloc["code"], name, "BUY", qty, cur,
-                    f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
+            if pct <= -cfg.stop_loss_pct:
+                sell_reason = f"손절({pct:.1f}%)"
+            elif pct >= cfg.take_profit_pct:
+                sell_reason = f"익절(+{pct:.1f}%)"
+            else:
+                try:
+                    sig = await get_signal(holding.stock_code, db)
+                    sell_score = float(sig.get("signal_score", 0))
+                    if sig.get("signal") == "SELL":
+                        sell_reason = f"AI SELL({sell_score:.0f}점)"
+                except Exception:
+                    diagnostics["signal_fetch_failed"] += 1
+
+            if sell_reason:
+                try:
+                    log = await _execute_paper_order(
+                        user_id, holding.stock_code, holding.stock_name or "",
+                        "SELL", holding.quantity, cur,
+                        sell_reason, cfg.mode, sell_score, db,
+                    )
+                    actions.append(log)
+                except Exception as exc:
+                    logger.error("매도 실패 %s: %s", holding.stock_code, exc)
+
+        # ── 2. AI 스크리닝 → 신규 매수 ────────────────────────────────────
+        used = sum(int(float(h.avg_price) * h.quantity) for h in (
+            (await db.execute(select(Portfolio).where(
+                Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
+            ))).scalars().all()
+        ))
+        available = _calculate_buying_power(cfg.total_budget, used)
+
+        candidates: list[dict] = []
+        held: set[str] = set()
+        fresh: list[dict] = []
+        remaining_slots: int = 0
+
+        if available > 0:
+            candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
+
+            held_res = await db.execute(
+                select(Portfolio.stock_code).where(
+                    Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
                 )
-                actions.append(log)
-                available -= qty * cur
-            except Exception as exc:
-                logger.error("매수 실패 %s: %s", alloc["code"], exc)
+            )
+            held = {r[0] for r in held_res.fetchall()}
+            fresh = [
+                c for c in candidates
+                if c["code"] not in held and c["score"] >= cfg.signal_threshold
+            ]
+            remaining_slots = max(0, cfg.max_positions - len(held))
+            diagnostics["below_threshold"] = len([c for c in candidates if c["code"] not in held and c["score"] < cfg.signal_threshold])
+            diagnostics["max_positions_reached"] = remaining_slots == 0
+            fresh = fresh[:remaining_slots]
 
-    # 매매 없는 경우 이유 설명
-    no_trade_reason = None
-    if not actions:
-        invested = cfg.total_budget - available
-        invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
-            f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
-        )
-        if not candidates:
-            no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
-        elif all(c["code"] in held for c in candidates):
-            no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
-        elif available <= 0:
-            no_trade_reason = f"가용 예산 부족 (투자됨: {invested_str})"
-        else:
-            no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
+            allocations = _allocate(fresh, available, cfg.total_budget)
+            for alloc in allocations:
+                if available <= 0:
+                    break
+                try:
+                    price_data = await get_stock_current_price(alloc["code"])
+                    cur = price_data.get("close", 0)
+                    name = price_data.get("name", alloc["code"])
+                except Exception:
+                    diagnostics["price_fetch_failed"] += 1
+                    continue
+                if cur <= 0:
+                    continue
 
-    return {
-        "executed": len(actions),
-        "actions": actions,
-        "scanned": len(candidates),
-        "held_count": len(held),
-        "no_trade_reason": no_trade_reason,
-    }
+                qty = alloc["alloc"] // cur
+                if qty < 1:
+                    continue
+
+                # ── risk check ──────────────────────────────────────────────
+                try:
+                    warning = await risk_service.check_order(
+                        user, alloc["code"], "BUY", qty, cur, db, mode=cfg.mode
+                    )
+                except HTTPException as exc:
+                    actions.append({
+                        "action": "SKIP",
+                        "stock_code": alloc["code"],
+                        "reason": f"risk_blocked:{exc.detail}",
+                    })
+                    diagnostics["risk_blocked"] += 1
+                    continue
+                # ─────────────────────────────────────────────────────────────
+
+                try:
+                    log = await _execute_paper_order(
+                        user_id, alloc["code"], name, "BUY", qty, cur,
+                        f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
+                        warning=warning,
+                    )
+                    actions.append(log)
+                    available -= qty * cur
+                except Exception as exc:
+                    logger.error("매수 실패 %s: %s", alloc["code"], exc)
+
+        # 매매 없는 경우 이유 설명
+        trade_actions = [a for a in actions if a.get("action") in ("BUY", "SELL")]
+        no_trade_reason = None
+        if not trade_actions:
+            invested = used  # use the pre-calculated invested cost
+            invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
+                f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
+            )
+            if available <= 0:
+                no_trade_reason = f"가용 예산 부족 또는 현금 보유 한도 도달 (투자됨: {invested_str})"
+            elif not candidates:
+                no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
+            elif all(c["code"] in held for c in candidates):
+                no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
+            elif remaining_slots == 0:
+                no_trade_reason = f"보유 종목 수 한도 도달 ({len(held)}/{cfg.max_positions})"
+            elif not fresh:
+                no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 신호 점수 미달 (기준: {cfg.signal_threshold}점)"
+            elif diagnostics["risk_blocked"] > 0:
+                no_trade_reason = f"BUY 후보 {diagnostics['risk_blocked']}개 리스크 규칙으로 차단됨"
+            else:
+                no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
+
+        return {
+            "executed": len(trade_actions),
+            "actions": actions,
+            "scanned": len(candidates),
+            "held_count": len(held),
+            "no_trade_reason": no_trade_reason,
+            "diagnostics": diagnostics,
+        }
+    finally:
+        await _release_run_lock(user_id, lock_token)
 
 
 async def kill_switch(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
