@@ -7,7 +7,7 @@ celery_app = Celery(
     "tasks",
     broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
     backend=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-    include=["tasks.ai_tasks", "tasks.email_tasks", "tasks.order_tasks"],
+    include=["tasks.ai_tasks", "tasks.auto_trade_tasks", "tasks.email_tasks", "tasks.order_tasks"],
 )
 
 celery_app.conf.beat_schedule = {
@@ -22,6 +22,10 @@ celery_app.conf.beat_schedule = {
     "check-daily-loss": {
         "task": "tasks.email_tasks.check_daily_loss",
         "schedule": 600.0,
+    },
+    "run-auto-trade": {
+        "task": "tasks.auto_trade_tasks.run_auto_trade_all",
+        "schedule": crontab(minute="*/10", hour="9-15", day_of_week="mon-fri"),
     },
 }
 celery_app.conf.timezone = "Asia/Seoul"
