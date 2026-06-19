@@ -14,18 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from api.deps import get_optional_user
 from main import app
 
-# AISignalHistory DB 쿼리를 항상 0으로 단락시키는 context manager 체인 helper
-# system.py에서 db.execute(...)를 호출하므로 get_db를 통해 넘어온 세션의 execute를 mock한다.
-# 더 간단하게 패치할 수 있도록 "models.ai_signal.AISignalHistory" 를 patch하는 대신
-# system.py 모듈이 이미 import한 AISignalHistory를 패치한다.
-_AI_PATCH = "api.routes.system.AISignalHistory"
-
-
-def _patch_db_count_zero():
-    """db.execute → scalar() = 0 을 반환하도록 세션 execute를 mock."""
-    mock_result = MagicMock()
-    mock_result.scalar.return_value = 0
-    return mock_result
+# DB 업로드 예측 건수 조회를 항상 0으로 단락시키는 패치 경로.
+# system.py의 _count_uploaded_predictions 함수를 직접 patch하여
+# DB 연결 없이도 AI 상태 섹션이 안정적으로 동작하도록 한다.
+_COUNT_PATCH = "api.routes.system._count_uploaded_predictions"
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +31,7 @@ async def test_status_no_kis_no_auth(client):
         with patch("api.routes.system.settings.SYSTEM_KIS_APP_KEY", ""), \
              patch("api.routes.system.settings.SYSTEM_KIS_APP_SECRET", ""), \
              patch("api.routes.system.settings.SYSTEM_KIS_ACCOUNT_NO", ""), \
-             patch(_AI_PATCH):
+             patch(_COUNT_PATCH, new=AsyncMock(return_value=0)):
             resp = await client.get("/system/status")
     finally:
         app.dependency_overrides.pop(get_optional_user, None)
@@ -100,7 +92,7 @@ async def test_status_kis_configured_balance_ok(client):
              patch("api.routes.system.settings.SYSTEM_KIS_ACCOUNT_NO", "12345678-01"), \
              patch("api.routes.system.settings.SYSTEM_KIS_MODE", "paper"), \
              patch("api.routes.system.get_account_balance", new=AsyncMock(return_value=mock_balance)), \
-             patch(_AI_PATCH):
+             patch(_COUNT_PATCH, new=AsyncMock(return_value=0)):
             resp = await client.get("/system/status")
     finally:
         app.dependency_overrides.pop(get_optional_user, None)
@@ -141,7 +133,7 @@ async def test_status_kis_configured_balance_fail(client):
                  "api.routes.system.get_account_balance",
                  new=AsyncMock(side_effect=HTTPException(status_code=502, detail="KIS 연결 실패: timeout"))
              ), \
-             patch(_AI_PATCH):
+             patch(_COUNT_PATCH, new=AsyncMock(return_value=0)):
             resp = await client.get("/system/status")
     finally:
         app.dependency_overrides.pop(get_optional_user, None)
@@ -185,7 +177,7 @@ async def test_status_empty_holdings_vs_failure(client):
              patch("api.routes.system.settings.SYSTEM_KIS_ACCOUNT_NO", "12345678-01"), \
              patch("api.routes.system.settings.SYSTEM_KIS_MODE", "paper"), \
              patch("api.routes.system.get_account_balance", new=AsyncMock(return_value=mock_balance_empty)), \
-             patch(_AI_PATCH):
+             patch(_COUNT_PATCH, new=AsyncMock(return_value=0)):
             resp_ok = await client.get("/system/status")
     finally:
         app.dependency_overrides.pop(get_optional_user, None)
@@ -208,7 +200,7 @@ async def test_status_empty_holdings_vs_failure(client):
                  "api.routes.system.get_account_balance",
                  new=AsyncMock(side_effect=HTTPException(status_code=502, detail="연결 실패"))
              ), \
-             patch(_AI_PATCH):
+             patch(_COUNT_PATCH, new=AsyncMock(return_value=0)):
             resp_fail = await client.get("/system/status")
     finally:
         app.dependency_overrides.pop(get_optional_user, None)
@@ -233,7 +225,7 @@ async def test_status_checked_at_format(client):
         with patch("api.routes.system.settings.SYSTEM_KIS_APP_KEY", ""), \
              patch("api.routes.system.settings.SYSTEM_KIS_APP_SECRET", ""), \
              patch("api.routes.system.settings.SYSTEM_KIS_ACCOUNT_NO", ""), \
-             patch(_AI_PATCH):
+             patch(_COUNT_PATCH, new=AsyncMock(return_value=0)):
             resp = await client.get("/system/status")
     finally:
         app.dependency_overrides.pop(get_optional_user, None)

@@ -20,6 +20,17 @@ _KST = ZoneInfo("Asia/Seoul")
 router = APIRouter()
 
 
+async def _count_uploaded_predictions(db: AsyncSession) -> int:
+    """DB에 저장된 LSTM 예측 건수를 반환. 실패 시 0 반환."""
+    try:
+        result = await db.execute(
+            select(func.count()).select_from(AISignalHistory).where(AISignalHistory.predicted_prices.isnot(None))
+        )
+        return result.scalar() or 0
+    except Exception:
+        return 0
+
+
 def _kis_configured() -> bool:
     return bool(settings.SYSTEM_KIS_APP_KEY and settings.SYSTEM_KIS_APP_SECRET and settings.SYSTEM_KIS_ACCOUNT_NO)
 
@@ -124,36 +135,33 @@ async def get_system_status(
         }
 
     # 6. AI 예측 상태
-    try:
-        from ml.predict import WEIGHTS_DIR  # noqa: PLC0415 — ML 모듈은 조건부 import 허용
-        pth_count = len(list(WEIGHTS_DIR.glob("*.pth")))
-    except Exception:
-        pth_count = 0
-
-    if pth_count > 0:
+    # 우선순위: ai_service.get_prediction() 와 동일하게 유지
+    #   1순위: DB 저장 예측 (predicted_prices IS NOT NULL)
+    #   2순위: 로컬 LSTM 가중치 (.pth 파일)
+    #   3순위: unavailable
+    uploaded_count = await _count_uploaded_predictions(db)
+    if uploaded_count > 0:
         ai = {
-            "prediction_source": "local",
-            "message": f"로컬 LSTM 가중치 {pth_count}종목 사용 가능",
+            "prediction_source": "uploaded",
+            "message": f"업로드된 예측 데이터 {uploaded_count}건 사용",
         }
     else:
-        ai = {
-            "prediction_source": "unavailable",
-            "message": "LSTM 가중치 없음 — AI 예측 비활성",
-        }
+        try:
+            from ml.predict import WEIGHTS_DIR  # noqa: PLC0415 — ML 모듈은 조건부 import 허용
+            pth_count = len(list(WEIGHTS_DIR.glob("*.pth")))
+        except Exception:
+            pth_count = 0
 
-    # 업로드된 DB 예측이 있는지 가볍게 확인 (DB 쿼리 최소화)
-    try:
-        result = await db.execute(
-            select(func.count()).select_from(AISignalHistory).where(AISignalHistory.predicted_prices.isnot(None))
-        )
-        uploaded_count = result.scalar() or 0
-        if uploaded_count > 0:
+        if pth_count > 0:
             ai = {
-                "prediction_source": "uploaded",
-                "message": f"업로드된 예측 데이터 {uploaded_count}건 사용",
+                "prediction_source": "local",
+                "message": f"로컬 LSTM 가중치 {pth_count}종목 사용 가능",
             }
-    except Exception:
-        pass
+        else:
+            ai = {
+                "prediction_source": "unavailable",
+                "message": "LSTM 가중치 없음 — AI 예측 비활성",
+            }
 
     return {
         "backend": backend,

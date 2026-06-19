@@ -10,9 +10,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.middleware.rate_limit import limiter
 from api.routes import account as account_router
 from api.routes import ai as ai_router
-from api.routes import analysis as analysis_router
-from api.routes import system as system_router
 from api.routes import alerts as alerts_router
+from api.routes import analysis as analysis_router
 from api.routes import auth as auth_router
 from api.routes import backtest as backtest_router
 from api.routes import portfolio as portfolio_router
@@ -20,6 +19,7 @@ from api.routes import realtime as realtime_router
 from api.routes import risk as risk_router
 from api.routes import simulate as simulate_router
 from api.routes import stocks as stocks_router
+from api.routes import system as system_router
 from api.routes import trades as trades_router
 from api.routes import watchlist as watchlist_router
 from core.config import settings
