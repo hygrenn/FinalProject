@@ -4,6 +4,7 @@ import { X, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
+import { RecentTradesPanel } from '@/components/Trade/RecentTradesPanel'
 
 interface AccountSummary {
   total_asset: number
@@ -210,6 +211,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             </div>
           </>
         )}
+
+        {/* 최근 주문 패널 — 계좌/보유 종목과 같은 맥락에 배치 */}
+        {user && <RecentTradesPanel />}
       </div>
 
       {data && (

@@ -78,11 +78,14 @@ export function OrderModal({ open, onClose, stock, orderType }: OrderModalProps)
         </DialogHeader>
 
         {submitted ? (
-          <div className="text-center py-6">
-            <div className={cn('text-2xl font-bold mb-2', isBuy ? 'text-green-400' : 'text-red-400')}>
-              {isBuy ? '매수 완료' : '매도 완료'}
+          <div className="text-center py-6 space-y-2">
+            <div className={cn('text-xl font-bold', isBuy ? 'text-green-400' : 'text-red-400')}>
+              {isBuy ? '매수 접수' : '매도 접수'}
             </div>
-            <div className="text-sm text-muted-foreground">주문이 접수되었습니다</div>
+            <div className="text-sm font-medium text-foreground">주문 접수됨, 체결 확인 중</div>
+            <div className="text-xs text-muted-foreground">
+              계좌 패널의 최근 주문에서 체결 상태를 확인하세요.
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">

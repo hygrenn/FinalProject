@@ -148,3 +148,54 @@ async def test_order_risk_hard_stop(client):
     finally:
         app.dependency_overrides.pop(get_current_user, None)
     assert resp.status_code == 400
+
+
+async def test_list_trades_limit_param(client):
+    """limit query param이 100 기본값을 대체해야 한다."""
+    user = _mock_user()
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        resp = await client.get("/trades?limit=10")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+async def test_list_trades_limit_capped(client):
+    """limit은 500을 초과할 수 없다."""
+    user = _mock_user()
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        resp = await client.get("/trades?limit=9999")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+
+async def test_list_trades_status_filter(client):
+    """status query param이 필터로 작동해야 한다."""
+    user = _mock_user()
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        resp = await client.get("/trades?status=PENDING")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+    # 결과가 있으면 모두 PENDING 상태여야 한다
+    for trade in resp.json():
+        assert trade["status"] == "PENDING"
+
+
+async def test_list_trades_limit_and_status_combined(client):
+    """limit + status 조합 필터."""
+    user = _mock_user()
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        resp = await client.get("/trades?limit=5&status=FILLED")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)

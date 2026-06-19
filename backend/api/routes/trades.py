@@ -131,6 +131,7 @@ async def list_trades(
     request: Request,
     status: str | None = None,
     mode: str | None = None,
+    limit: int | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -141,7 +142,8 @@ async def list_trades(
         query = query.where(Trade.mode == mode)
     else:
         query = query.where(Trade.mode == settings.SYSTEM_KIS_MODE)
-    query = query.order_by(Trade.created_at.desc()).limit(100)
+    effective_limit = max(1, min(limit, 500)) if limit is not None else 100
+    query = query.order_by(Trade.created_at.desc()).limit(effective_limit)
 
     result = await db.execute(query)
     trades = result.scalars().all()
