@@ -1,7 +1,7 @@
 from typing import Any, List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,6 +69,8 @@ async def update_config(
     db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump(exclude_none=True)
+    if data.get("mode") == "real":
+        raise HTTPException(status_code=400, detail="자동매매는 모의투자 전용입니다. 실거래 모드는 지원하지 않습니다.")
     cfg = await auto_trade_service.update_config(user.id, data, db)
     return _cfg_to_dict(cfg)
 

@@ -94,16 +94,14 @@ export function AutoTradePanel() {
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null)
 
   const configRef = useRef(config)
-  configRef.current = config
+  useEffect(() => {
+    configRef.current = config
+  }, [config])
 
   const watchlistRef = useRef(watchlist)
-  watchlistRef.current = watchlist
-
-  const fetchConfig = useCallback(async () => {
-    const res = await api.get('/auto-trade/config')
-    setConfig(res.data)
-    return res.data as AutoTradeConfig
-  }, [])
+  useEffect(() => {
+    watchlistRef.current = watchlist
+  }, [watchlist])
 
   const fetchLogs = useCallback(async () => {
     const res = await api.get('/auto-trade/logs?limit=50')
@@ -124,14 +122,25 @@ export function AutoTradePanel() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([fetchConfig(), fetchLogs()])
-      .then(([cfg]) => {
-        if (!cancelled) fetchScan(cfg.enabled ? watchlistRef.current : watchlistRef.current)
-      })
-      .catch(() => setError('데이터를 불러오지 못했습니다.'))
-      .finally(() => { if (!cancelled) setLoading(false) })
+    ;(async () => {
+      try {
+        const [configRes, logsRes] = await Promise.all([
+          api.get('/auto-trade/config'),
+          api.get('/auto-trade/logs?limit=50'),
+        ])
+        if (!cancelled) {
+          setConfig(configRes.data)
+          setLogs(logsRes.data.logs || [])
+          fetchScan(watchlistRef.current)
+        }
+      } catch {
+        if (!cancelled) setError('데이터를 불러오지 못했습니다.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
     return () => { cancelled = true }
-  }, [fetchConfig, fetchLogs, fetchScan])
+  }, [fetchScan])
 
   // 5분 자동 실행 (enabled일 때)
   useEffect(() => {
@@ -183,8 +192,9 @@ export function AutoTradePanel() {
       const res = await api.put('/auto-trade/config', { enabled })
       setConfig(res.data)
       if (enabled) setCountdown(POLL_INTERVAL)
-    } catch (e: any) {
-      setError(e.response?.data?.detail || '변경 실패')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setError(err.response?.data?.detail || '변경 실패')
     }
   }
 
@@ -199,8 +209,9 @@ export function AutoTradePanel() {
         mode: config.mode,
       })
       setConfig(res.data)
-    } catch (e: any) {
-      setError(e.response?.data?.detail || '저장 실패')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setError(err.response?.data?.detail || '저장 실패')
     } finally {
       setSaving(false)
     }
@@ -229,11 +240,12 @@ export function AutoTradePanel() {
         await fetchLogs()
         fetchScan(watchlist)
       }
-    } catch (e: any) {
-      if (e.response?.status === 429) {
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string }; status?: number } }
+      if (err.response?.status === 429) {
         setError('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.')
       } else {
-        setError(e.response?.data?.detail || '실행 실패')
+        setError(err.response?.data?.detail || '실행 실패')
       }
     } finally {
       setRunning(false)
@@ -245,8 +257,9 @@ export function AutoTradePanel() {
     try {
       await api.post('/auto-trade/stop')
       setConfig(prev => ({ ...prev, enabled: false }))
-    } catch (e: any) {
-      setError(e.response?.data?.detail || '중지 실패')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setError(err.response?.data?.detail || '중지 실패')
     }
   }
 

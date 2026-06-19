@@ -263,6 +263,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
     cfg = await get_config(user_id, db)
     if not cfg.enabled:
         return {"skipped": True, "reason": "not_enabled"}
+    if cfg.mode == "real":
+        return {"skipped": True, "reason": "real_mode_not_supported", "message": "자동매매는 모의투자 전용입니다."}
 
     actions: list[dict] = []
 
