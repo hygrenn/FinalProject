@@ -1,5 +1,5 @@
 // frontend/src/components/System/SystemStatusPanel.tsx
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { X, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
@@ -73,18 +73,26 @@ export function SystemStatusPanel({ onClose }: SystemStatusPanelProps) {
   const [data, setData] = useState<SystemStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const fetchStatus = useCallback(async () => {
     setLoading(true)
     setError(null)
+    let failed = false
     try {
       const res = await api.get<SystemStatusResponse>('/system/status')
-      setData(res.data)
+      if (mountedRef.current) setData(res.data)
     } catch {
-      setError('상태 조회에 실패했습니다. 백엔드 서버를 확인해 주세요.')
-    } finally {
-      setLoading(false)
+      failed = true
+      if (mountedRef.current) setError('상태 조회에 실패했습니다. 백엔드 서버를 확인해 주세요.')
     }
+    if (mountedRef.current) setLoading(false)
+    void failed
   }, [])
 
   useEffect(() => {

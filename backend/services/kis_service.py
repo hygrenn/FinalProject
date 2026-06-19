@@ -98,6 +98,15 @@ async def place_order(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # hashkey 생성 후 헤더에 추가 (주문 변조 방지)
+            hk_resp = await client.post(
+                f"{_base_url(mode)}/uapi/hashkey",
+                json=body,
+                headers=headers,
+            )
+            if hk_resp.status_code == 200:
+                headers["hashkey"] = hk_resp.json().get("HASH", "")
+
             resp = await client.post(
                 f"{_base_url(mode)}/uapi/domestic-stock/v1/trading/order-cash",
                 json=body,
@@ -106,7 +115,8 @@ async def place_order(
             resp.raise_for_status()
             data = resp.json()
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"KIS 주문 실패: {exc.response.text}") from exc
+        _logger.error("KIS 주문 실패 (status=%s): %s", exc.response.status_code, exc.response.text)
+        raise HTTPException(status_code=502, detail=f"KIS 주문 실패 (HTTP {exc.response.status_code})") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"KIS 연결 실패: {exc}") from exc
 
@@ -137,6 +147,15 @@ async def cancel_order(user, kis_order_no: str) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # hashkey 생성 후 헤더에 추가 (주문 변조 방지)
+            hk_resp = await client.post(
+                f"{_base_url(mode)}/uapi/hashkey",
+                json=body,
+                headers=headers,
+            )
+            if hk_resp.status_code == 200:
+                headers["hashkey"] = hk_resp.json().get("HASH", "")
+
             resp = await client.post(
                 f"{_base_url(mode)}/uapi/domestic-stock/v1/trading/order-rvsecncl",
                 json=body,
@@ -144,6 +163,9 @@ async def cancel_order(user, kis_order_no: str) -> dict:
             )
             resp.raise_for_status()
             data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        _logger.error("KIS 취소 실패 (status=%s): %s", exc.response.status_code, exc.response.text)
+        raise HTTPException(status_code=502, detail=f"KIS 취소 실패 (HTTP {exc.response.status_code})") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"KIS 취소 실패: {exc}") from exc
 

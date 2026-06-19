@@ -68,7 +68,7 @@ export function ChartTab() {
   const [chart, setChart] = useState<IChartApi | null>(null)
   const [candles, setCandles] = useState<Candle[]>(MOCK_CANDLES)
   const [patterns, setPatterns] = useState<CandlePattern[]>(MOCK_PATTERNS)
-  const [prediction, setPrediction] = useState<Prediction>({ bullish: [], base: [], bearish: [], confidence: 0 })
+  const [prediction, setPrediction] = useState<Prediction | null>(null)
   const [detail, setDetail] = useState<StockDetail | null>(null)
   const [interval, setInterval] = useState('day')
   const [period, setPeriod] = useState('1y')
@@ -289,7 +289,7 @@ export function ChartTab() {
       <div className="flex flex-col flex-1 min-h-0 gap-0.5 p-1">
         <div className="flex-[3] min-h-0">
           <CandleChart candles={candles} onChartReady={setChart} />
-          {!INTRADAY.has(interval) && showPrediction && (
+          {!INTRADAY.has(interval) && showPrediction && prediction && (
             <PredictionOverlay
               chart={chart}
               prediction={prediction}

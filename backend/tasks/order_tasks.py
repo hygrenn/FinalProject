@@ -38,7 +38,7 @@ async def _poll_async(task, trade_id: str, user_id: str, kis_order_no: str, mode
         fill = await kis_service.poll_fill(user, kis_order_no, mode=trade.mode)
         if fill is None:
             if task.request.retries < task.max_retries:
-                raise task.retry()
+                raise task.retry(countdown=10)
             if trade.filled_quantity == 0:
                 trade.status = "UNKNOWN"
             await db.commit()

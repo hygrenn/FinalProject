@@ -251,7 +251,7 @@ async def google_callback(
     await db.commit()
 
     access_token = create_access_token(str(user.id))
-    redirect = RedirectResponse(url=f"{settings.FRONTEND_URL}/oauth-callback#token={access_token}")
+    redirect = RedirectResponse(url=f"{settings.FRONTEND_URL}/oauth-callback?token={access_token}")
     redirect.set_cookie(
         key=_REFRESH_COOKIE,
         value=raw_rt,

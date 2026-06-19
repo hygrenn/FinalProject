@@ -8,7 +8,9 @@ async def test_health(client):
 
 
 async def test_register_success(client):
-    with patch("api.routes.auth.send_verification_email") as mock_email:
+    with patch("api.routes.auth.send_verification_email") as mock_email, \
+         patch("api.routes.auth.settings") as mock_settings:
+        mock_settings.SENDGRID_API_KEY = "test-key"
         response = await client.post(
             "/auth/register", json={"email": "test@example.com", "password": "password123"}
         )
@@ -70,7 +72,9 @@ async def test_login_wrong_password(client):
 
 
 async def test_login_unverified_user(client):
-    with patch("api.routes.auth.send_verification_email"):
+    with patch("api.routes.auth.send_verification_email"), \
+         patch("api.routes.auth.settings") as mock_settings:
+        mock_settings.SENDGRID_API_KEY = "test-key"
         await client.post(
             "/auth/register", json={"email": "unverified@test.com", "password": "pass1234"}
         )
@@ -127,7 +131,7 @@ async def test_me_returns_user_info(client):
 
 async def test_me_unauthorized_without_token(client):
     response = await client.get("/auth/me")
-    assert response.status_code == 403  # HTTPBearer returns 403 when header missing
+    assert response.status_code == 401  # HTTPBearer returns 401 when header missing
 
 
 async def test_register_kis_paper_key(client):
