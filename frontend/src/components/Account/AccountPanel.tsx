@@ -84,11 +84,6 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
       <div className="flex items-center justify-between px-4 h-12 border-b border-border shrink-0">
         <div>
           <span className="font-semibold text-sm">내 계좌</span>
-          {data && (
-            <span className="ml-2 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {data.mode === 'paper' ? '모의투자' : '실계좌'}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={fetchBalance} disabled={loading}>
@@ -122,6 +117,22 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
           </div>
         )}
 
+        {/* 조회 모드 안내 — data null(잔고 조회 실패)이어도 항상 표시 */}
+        {user && (
+          <div
+            data-testid="account-mode-info"
+            className="mx-4 mt-3 text-xs text-muted-foreground bg-muted/40 border border-border rounded p-2 space-y-1"
+          >
+            <p>
+              현재 조회 모드:{' '}
+              <span className="font-medium text-foreground">
+                {(data?.mode ?? user.mode) === 'paper' ? '모의투자' : '실계좌'}
+              </span>
+            </p>
+            <p>실계좌/모의계좌 전환은 리스크/설정 화면에서만 변경합니다.</p>
+          </div>
+        )}
+
         {data && (
           <>
             {/* 계좌 요약 */}
@@ -134,20 +145,6 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 {data.mode === 'real'
                   ? '실제 주문이 이 계좌로 실행됩니다.'
                   : '주문은 모의투자 계좌로 실행됩니다.'}
-              </div>
-
-              {/* 조회 모드 안내 */}
-              <div
-                data-testid="account-mode-info"
-                className="text-xs text-muted-foreground bg-muted/40 border border-border rounded p-2 mb-3 space-y-1"
-              >
-                <p>
-                  현재 조회 모드:{' '}
-                  <span className="font-medium text-foreground">
-                    {data.mode === 'paper' ? '모의투자' : '실계좌'}
-                  </span>
-                </p>
-                <p>실계좌/모의계좌 전환은 리스크/설정 화면에서만 변경합니다.</p>
               </div>
 
               <div className="text-xs text-muted-foreground mb-1">{data.account_no}</div>
