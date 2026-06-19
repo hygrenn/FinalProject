@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
@@ -26,6 +26,14 @@ class AutoTradeConfigUpdate(BaseModel):
         if v not in ("paper", "real"):
             raise ValueError("mode는 'paper' 또는 'real'이어야 합니다.")
         return v
+
+
+class RunRequest(BaseModel):
+    extra_codes: Optional[List[str]] = None
+
+
+class ScanRequest(BaseModel):
+    codes: Optional[List[str]] = None
 
 
 def _cfg_to_dict(cfg: Any) -> dict:
@@ -82,11 +90,27 @@ async def get_logs(
 @limiter.limit("30/minute")
 async def run_cycle(
     request: Request,
+    body: RunRequest = RunRequest(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await auto_trade_service.run_cycle(user.id, db)
+    result = await auto_trade_service.run_cycle(user.id, db, extra_codes=body.extra_codes)
     return result
+
+
+@router.post("/scan")
+@limiter.limit("20/minute")
+async def scan_stocks(
+    request: Request,
+    body: ScanRequest = ScanRequest(),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stocks = await auto_trade_service.scan_stocks(body.codes or [], db)
+    return {
+        "stocks": stocks,
+        "scanned_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+    }
 
 
 @router.post("/stop")

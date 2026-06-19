@@ -4,10 +4,19 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID
+
+# 종목코드 → 이름 (JSON 파일 기반, 없으면 빈 dict)
+_NAMES_PATH = Path(__file__).parent.parent / "ml" / "stock_names.json"
+try:
+    _STOCK_NAMES: dict[str, str] = json.loads(_NAMES_PATH.read_text())
+except Exception:
+    _STOCK_NAMES = {}
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,8 +81,19 @@ async def get_logs(user_id: UUID, db: AsyncSession, limit: int = 50) -> list[dic
     ]
 
 
-async def _get_buy_candidates(db: AsyncSession) -> list[dict]:
-    """AI BUY 신호 종목 수집 (점수 내림차순)."""
+_MAJOR_50 = [
+    "005930","000660","035720","005380","051910","006400","068270","207940",
+    "035420","105560","055550","086790","032830","028260","066570","017670",
+    "003550","012330","011200","096770","034220","000270","015760","009150",
+    "018260","010950","011070","047050","024110","000810","033780","030200",
+    "003490","036570","251270","316140","323410","402340","259960","293490",
+    "352820","035900","036460","180640","011780","009830","004020","010060",
+    "000100","007070",
+]
+
+
+async def _get_buy_candidates(db: AsyncSession, extra_codes: list[str] | None = None) -> list[dict]:
+    """AI BUY 신호 종목 수집 (점수 내림차순). extra_codes는 사용자 관심종목."""
     from services.ai_service import get_signal, get_top_picks
 
     candidates: dict[str, dict] = {}
@@ -103,18 +123,11 @@ async def _get_buy_candidates(db: AsyncSession) -> list[dict]:
     except Exception:
         pass
 
-    # 3. fallback: 코스피 주요 50종목 실시간 계산
-    MAJOR = [
-        "005930","000660","035720","005380","051910","006400","068270","207940",
-        "035420","105560","055550","086790","032830","028260","066570","017670",
-        "003550","012330","011200","096770","034220","000270","015760","009150",
-        "018260","010950","011070","047050","024110","000810","033780","030200",
-        "003490","036570","251270","316140","323410","402340","259960","293490",
-        "352820","035900","036460","180640","011780","009830","004020","010060",
-        "000100","007070",
-    ]
-    scan_codes = [c for c in MAJOR if c not in candidates]
+    # 3. 사용자 관심 종목 + 코스피 주요 50종목 스캔
+    scan_codes = list(dict.fromkeys((extra_codes or []) + _MAJOR_50))
     for code in scan_codes:
+        if code in candidates:
+            continue
         try:
             sig = await get_signal(code, db)
             if sig.get("signal") == "BUY":
@@ -123,6 +136,44 @@ async def _get_buy_candidates(db: AsyncSession) -> list[dict]:
             continue
 
     return sorted(candidates.values(), key=lambda x: x["score"], reverse=True)
+
+
+async def scan_stocks(codes: list[str], db: AsyncSession) -> list[dict]:
+    """주어진 종목들의 현재 AI 신호를 조회 (매매 없이 분석만)."""
+    from services.ai_service import get_signal
+
+    results: list[dict] = []
+    seen: set[str] = set()
+
+    # 전달받은 코드 + MAJOR_50 합쳐서 최대 60종목
+    all_codes = list(dict.fromkeys(codes + _MAJOR_50))[:60]
+
+    for code in all_codes:
+        if code in seen:
+            continue
+        seen.add(code)
+        try:
+            sig = await get_signal(code, db)
+            results.append({
+                "code": code,
+                "name": _STOCK_NAMES.get(code, code),
+                "signal": sig.get("signal", "HOLD"),
+                "score": float(sig.get("signal_score", 0)),
+                "rsi": float(sig.get("indicators", {}).get("rsi_14", 0) or 0),
+            })
+        except Exception:
+            results.append({
+                "code": code,
+                "name": _STOCK_NAMES.get(code, code),
+                "signal": "HOLD",
+                "score": 0.0,
+                "rsi": 0.0,
+            })
+
+    # BUY 우선, 점수 내림차순
+    priority = {"BUY": 0, "HOLD": 1, "SELL": 2}
+    results.sort(key=lambda x: (priority.get(x["signal"], 1), -x["score"]))
+    return results
 
 
 def _allocate(candidates: list[dict], available: int, total_budget: int) -> list[dict]:
@@ -205,7 +256,7 @@ async def _execute_paper_order(
             "quantity": quantity, "price": price, "total_amount": quantity * price, "reason": reason}
 
 
-async def run_cycle(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
+async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | None = None) -> dict[str, Any]:
     from services.ai_service import get_signal
     from services.market_service import get_stock_current_price
 
@@ -268,7 +319,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
     held: set[str] = set()
 
     if available > 0:
-        candidates = await _get_buy_candidates(db)
+        candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
 
         held_res = await db.execute(
             select(Portfolio.stock_code).where(
