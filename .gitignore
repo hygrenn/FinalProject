@@ -219,3 +219,17 @@ __marimo__/
 
 # ML model weights (train locally, upload via API)
 backend/ml/weights/*.pth
+
+# 로컬 개발 DB
+*.db
+*.db-journal
+
+# macOS
+.DS_Store
+
+# Vite 빌드 캐시
+frontend/.vite/
+frontend/@/
+
+# Claude Code 내부 도구
+.superpowers/
