@@ -220,10 +220,13 @@ async def _execute_paper_order(
     if quantity <= 0 or price <= 0:
         raise ValueError(f"invalid quantity={quantity} or price={price}")
 
+    # executed_qty tracks the actual filled quantity (may differ from requested quantity for SELL)
+    executed_qty = quantity
+
     trade = Trade(
         user_id=user_id, stock_code=stock_code, stock_name=stock_name,
         order_type=order_type, price_type="MARKET",
-        quantity=quantity, executed_price=price, filled_quantity=quantity,
+        quantity=executed_qty, executed_price=price, filled_quantity=executed_qty,
         status="FILLED", mode=mode,
         ai_signal_at_order=reason[:10] if reason else None,
         filled_at=datetime.now(timezone.utc),
@@ -240,34 +243,38 @@ async def _execute_paper_order(
     holding = result.scalar_one_or_none()
 
     if order_type == "BUY":
+        trade.quantity = executed_qty
+        trade.filled_quantity = executed_qty
         if holding is None:
             db.add(Portfolio(user_id=user_id, stock_code=stock_code, stock_name=stock_name,
-                             quantity=quantity, avg_price=price, mode=mode))
+                             quantity=executed_qty, avg_price=price, mode=mode))
         else:
-            new_qty = holding.quantity + quantity
-            new_avg = (float(holding.avg_price) * holding.quantity + price * quantity) / new_qty
+            new_qty = holding.quantity + executed_qty
+            new_avg = (float(holding.avg_price) * holding.quantity + price * executed_qty) / new_qty
             holding.quantity = new_qty
             holding.avg_price = round(new_avg, 2)
     elif order_type == "SELL":
         if holding is None:
             raise ValueError(f"SELL 실패: {stock_code} 보유 없음")
-        sell_qty = min(quantity, holding.quantity)
-        trade.realized_pnl = int((price - float(holding.avg_price)) * sell_qty)
-        trade.filled_quantity = sell_qty
-        trade.quantity = sell_qty
-        holding.quantity -= sell_qty
+        executed_qty = min(quantity, holding.quantity)
+        if executed_qty <= 0:
+            raise ValueError(f"SELL 실패: {stock_code} 보유 수량 없음")
+        trade.realized_pnl = int((price - float(holding.avg_price)) * executed_qty)
+        trade.filled_quantity = executed_qty
+        trade.quantity = executed_qty
+        holding.quantity -= executed_qty
         if holding.quantity <= 0:
             await db.delete(holding)
 
     db.add(AutoTradeLog(
         user_id=user_id, stock_code=stock_code, stock_name=stock_name,
-        action=order_type, quantity=quantity, price=price,
-        total_amount=quantity * price, reason=reason,
+        action=order_type, quantity=executed_qty, price=price,
+        total_amount=executed_qty * price, reason=reason,
         signal_score=signal_score, mode=mode,
     ))
     await db.commit()
     return {"action": order_type, "stock_code": stock_code, "stock_name": stock_name,
-            "quantity": quantity, "price": price, "total_amount": quantity * price, "reason": reason}
+            "quantity": executed_qty, "price": price, "total_amount": executed_qty * price, "reason": reason}
 
 
 async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | None = None) -> dict[str, Any]:
