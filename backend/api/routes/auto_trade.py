@@ -2,7 +2,7 @@ from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db
@@ -14,10 +14,11 @@ router = APIRouter()
 
 
 class AutoTradeConfigUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: Optional[bool] = None
     mode: Optional[str] = None
     total_budget: Optional[int] = Field(default=None, gt=0)
-    budget_per_trade: Optional[int] = Field(default=None, gt=0)  # 미사용, 예약 필드
     max_positions: Optional[int] = Field(default=None, ge=1, le=20)
     signal_threshold: Optional[int] = Field(default=None, ge=0, le=100)
     stop_loss_pct: Optional[float] = Field(default=None, ge=1.0, le=30.0)

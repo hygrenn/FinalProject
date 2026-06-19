@@ -12,6 +12,29 @@ from models.user import User
 from services.auto_trade_service import _allocate, _calculate_buying_power, _execute_paper_order
 
 
+class _FakeRedisLock:
+    def __init__(self):
+        self.value = None
+
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and self.value is not None:
+            return False
+        self.value = value
+        return True
+
+    async def get(self, key):
+        return self.value
+
+    async def delete(self, key):
+        self.value = None
+
+    async def eval(self, script, numkeys, key, token):
+        if self.value == token:
+            self.value = None
+            return 1
+        return 0
+
+
 def test_allocate_caps_single_stock_at_30_percent():
     """단일 종목 배분이 총예산의 30%를 초과하지 않는다."""
     candidates = [{"code": "005930", "score": 100}]
@@ -191,6 +214,73 @@ async def test_execute_paper_sell_raises_when_holding_quantity_is_zero(db_sessio
             signal_score=0.0,
             db=db_session,
         )
+
+
+@pytest.mark.asyncio
+async def test_failed_paper_sell_does_not_leave_pending_trade_for_later_commit(db_session):
+    """실패한 SELL 주문은 같은 세션의 후속 commit으로 Trade가 저장되면 안 된다."""
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(Portfolio(
+        user_id=user_id,
+        stock_code="005380",
+        stock_name="현대차",
+        quantity=0,
+        avg_price=100_000,
+        mode="paper",
+    ))
+    await db_session.flush()
+
+    with pytest.raises(ValueError, match="데이터 오염"):
+        await _execute_paper_order(
+            user_id=user_id,
+            stock_code="005380",
+            stock_name="현대차",
+            order_type="SELL",
+            quantity=1,
+            price=105_000,
+            reason="손절",
+            mode="paper",
+            signal_score=0.0,
+            db=db_session,
+        )
+
+    await db_session.commit()
+
+    trade_res = await db_session.execute(
+        select(Trade).where(Trade.user_id == user_id, Trade.stock_code == "005380")
+    )
+    assert trade_res.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_release_run_lock_does_not_delete_lock_owned_by_newer_run():
+    """TTL 만료 후 새 실행이 잡은 lock을 이전 실행의 finally가 삭제하면 안 된다."""
+    from services.auto_trade_service import _acquire_run_lock, _release_run_lock
+
+    redis = _FakeRedisLock()
+    user_id = uuid.uuid4()
+
+    with patch("core.redis_client.get_redis", new=AsyncMock(return_value=redis)):
+        first_token = await _acquire_run_lock(user_id)
+        assert first_token
+
+        # TTL 만료 후 다른 실행이 같은 user lock을 다시 획득한 상황을 재현한다.
+        redis.value = None
+        second_token = await _acquire_run_lock(user_id)
+        assert second_token
+        assert second_token != first_token
+
+        await _release_run_lock(user_id, first_token)
+
+    assert redis.value == second_token
 
 
 @pytest.mark.asyncio
@@ -403,7 +493,7 @@ async def test_run_cycle_reports_price_fetch_failures(db_session):
     await db_session.flush()
 
     with (
-        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value="lock-token")),
         patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
         patch("services.auto_trade_service._get_buy_candidates",
               new=AsyncMock(return_value=[
@@ -418,6 +508,54 @@ async def test_run_cycle_reports_price_fetch_failures(db_session):
     diag = result.get("diagnostics", {})
     assert diag.get("price_fetch_failed", 0) == 2, (
         f"expected price_fetch_failed=2 but got {diag}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_reports_sell_side_price_fetch_failures(db_session):
+    """보유 종목 SELL 검사 중 가격 조회 실패도 diagnostics에 기록된다."""
+    from services.auto_trade_service import run_cycle
+
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    db_session.add(Portfolio(
+        user_id=user_id,
+        stock_code="005930",
+        stock_name="삼성전자",
+        quantity=1,
+        avg_price=70_000,
+        mode="paper",
+    ))
+    await db_session.flush()
+
+    with (
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value="lock-token")),
+        patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
+        patch("services.auto_trade_service._get_buy_candidates", new=AsyncMock(return_value=[])),
+        patch("services.market_service.get_stock_current_price",
+              new=AsyncMock(side_effect=RuntimeError("시세 조회 실패"))),
+    ):
+        result = await run_cycle(user_id, db_session)
+
+    diag = result.get("diagnostics", {})
+    assert diag.get("price_fetch_failed", 0) == 1, (
+        f"expected sell-side price_fetch_failed=1 but got {diag}"
     )
 
 
@@ -461,7 +599,7 @@ async def test_run_cycle_allows_sell_even_when_buy_is_blocked(db_session):
 
     risk_check_mock = AsyncMock(side_effect=HTTPException(status_code=400, detail="거래 차단"))
     with (
-        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value="lock-token")),
         patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
         patch("services.auto_trade_service._get_buy_candidates",
               new=AsyncMock(return_value=[{"code": "000660", "score": 90.0}])),
@@ -540,7 +678,7 @@ async def test_run_cycle_releases_lock_when_price_fetch_raises(db_session):
     release_mock = AsyncMock()
 
     with (
-        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value="lock-token")),
         patch("services.auto_trade_service._release_run_lock", new=release_mock),
         patch("services.auto_trade_service._get_buy_candidates", new=AsyncMock(side_effect=RuntimeError("fail"))),
     ):
@@ -548,7 +686,7 @@ async def test_run_cycle_releases_lock_when_price_fetch_raises(db_session):
             await run_cycle(user_id, db_session)
 
     # Lock must have been released even when an exception propagates
-    release_mock.assert_called_once_with(user_id)
+    release_mock.assert_called_once_with(user_id, "lock-token")
 
 
 @pytest.mark.asyncio
@@ -579,7 +717,7 @@ async def test_run_cycle_does_not_buy_when_risk_hard_stop_blocks(db_session):
     await db_session.flush()
 
     with (
-        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value="lock-token")),
         patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
         patch("services.auto_trade_service._get_buy_candidates",
               new=AsyncMock(return_value=[{"code": "005930", "score": 90.0}])),
@@ -626,7 +764,7 @@ async def test_run_cycle_records_warning_when_risk_service_warns(db_session):
     await db_session.flush()
 
     with (
-        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value=True)),
+        patch("services.auto_trade_service._acquire_run_lock", new=AsyncMock(return_value="lock-token")),
         patch("services.auto_trade_service._release_run_lock", new=AsyncMock()),
         patch("services.auto_trade_service._get_buy_candidates",
               new=AsyncMock(return_value=[{"code": "005930", "score": 90.0}])),

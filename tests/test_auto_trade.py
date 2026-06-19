@@ -134,6 +134,20 @@ async def test_invalid_mode_422(client):
     assert resp.status_code == 422
 
 
+async def test_unused_budget_per_trade_is_rejected(client):
+    """미구현 예약 필드 budget_per_trade는 조용히 무시하지 않고 422로 거절한다."""
+    email = f"autotrade-budget-field-{uuid.uuid4().hex[:8]}@test.com"
+    await _register_and_verify(client, email)
+    token = await _get_token(client, email)
+
+    resp = await client.put(
+        "/auto-trade/config",
+        json={"budget_per_trade": 100_000},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422
+
+
 async def test_logs_limit_clamp(client):
     """7. GET /auto-trade/logs?limit=999 → 200, 반환 로그는 최대 200개를 초과하지 않는다."""
     email = f"autotrade-logs-{uuid.uuid4().hex[:8]}@test.com"

@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 # 종목코드 → 이름 (JSON 파일 기반, 없으면 빈 dict)
 _NAMES_PATH = Path(__file__).parent.parent / "ml" / "stock_names.json"
@@ -35,16 +35,25 @@ _MAX_SINGLE_STOCK_PCT = 0.30   # 한 종목에 총예산의 최대 30%
 _CASH_RESERVE_PCT    = 0.10   # 총예산의 10%는 현금 보유
 
 
-async def _acquire_run_lock(user_id: UUID) -> bool:
+async def _acquire_run_lock(user_id: UUID) -> str | None:
     from core.redis_client import get_redis
     redis = await get_redis()
-    return bool(await redis.set(f"auto_trade:lock:{user_id}", "1", ex=360, nx=True))
+    token = uuid4().hex
+    locked = await redis.set(f"auto_trade:lock:{user_id}", token, ex=360, nx=True)
+    return token if locked else None
 
 
-async def _release_run_lock(user_id: UUID) -> None:
+async def _release_run_lock(user_id: UUID, token: str) -> None:
     from core.redis_client import get_redis
     redis = await get_redis()
-    await redis.delete(f"auto_trade:lock:{user_id}")
+    key = f"auto_trade:lock:{user_id}"
+    script = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+    end
+    return 0
+    """
+    await redis.eval(script, 1, key, token)
 
 
 def _calculate_buying_power(total_budget: int, used_cost: int) -> int:
@@ -236,8 +245,22 @@ async def _execute_paper_order(
     if quantity <= 0 or price <= 0:
         raise ValueError(f"invalid quantity={quantity} or price={price}")
 
-    # executed_qty tracks the actual filled quantity (may differ from requested quantity for SELL)
+    result = await db.execute(
+        select(Portfolio).where(
+            Portfolio.user_id == user_id,
+            Portfolio.stock_code == stock_code,
+            Portfolio.mode == mode,
+        )
+    )
+    holding = result.scalar_one_or_none()
     executed_qty = quantity
+
+    if order_type == "SELL":
+        if holding is None:
+            raise ValueError(f"SELL 실패: {stock_code} 보유 없음")
+        executed_qty = min(quantity, holding.quantity)
+        if executed_qty <= 0:
+            raise ValueError(f"SELL 실패: {stock_code} 보유 수량이 0 (데이터 오염 의심)")
 
     trade = Trade(
         user_id=user_id, stock_code=stock_code, stock_name=stock_name,
@@ -249,15 +272,6 @@ async def _execute_paper_order(
     )
     db.add(trade)
 
-    result = await db.execute(
-        select(Portfolio).where(
-            Portfolio.user_id == user_id,
-            Portfolio.stock_code == stock_code,
-            Portfolio.mode == mode,
-        )
-    )
-    holding = result.scalar_one_or_none()
-
     if order_type == "BUY":
         if holding is None:
             db.add(Portfolio(user_id=user_id, stock_code=stock_code, stock_name=stock_name,
@@ -268,11 +282,6 @@ async def _execute_paper_order(
             holding.quantity = new_qty
             holding.avg_price = round(new_avg, 2)
     elif order_type == "SELL":
-        if holding is None:
-            raise ValueError(f"SELL 실패: {stock_code} 보유 없음")
-        executed_qty = min(quantity, holding.quantity)
-        if executed_qty <= 0:
-            raise ValueError(f"SELL 실패: {stock_code} 보유 수량이 0 (데이터 오염 의심)")
         trade.realized_pnl = int((price - float(holding.avg_price)) * executed_qty)
         trade.filled_quantity = executed_qty
         trade.quantity = executed_qty
@@ -314,8 +323,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
     if user is None:
         return {"skipped": True, "reason": "user_not_found"}
 
-    locked = await _acquire_run_lock(user_id)
-    if not locked:
+    lock_token = await _acquire_run_lock(user_id)
+    if not lock_token:
         return {"skipped": True, "reason": "already_running"}
     try:
         actions: list[dict] = []
@@ -336,6 +345,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 price_data = await get_stock_current_price(holding.stock_code)
                 cur = price_data.get("close", 0)
             except Exception:
+                diagnostics["price_fetch_failed"] += 1
                 continue
             if cur <= 0:
                 continue
@@ -475,7 +485,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             "diagnostics": diagnostics,
         }
     finally:
-        await _release_run_lock(user_id)
+        await _release_run_lock(user_id, lock_token)
 
 
 async def kill_switch(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
