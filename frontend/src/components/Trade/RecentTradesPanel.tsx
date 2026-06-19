@@ -81,8 +81,25 @@ export function RecentTradesPanel({ refreshSignal }: RecentTradesPanelProps) {
   }, [])
 
   useEffect(() => {
-    void fetchTrades()
-  }, [fetchTrades, refreshSignal])
+    let cancelled = false
+
+    async function fetchOnMount() {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data } = await api.get<TradeItem[]>(`/trades?limit=${RECENT_TRADES_LIMIT}`)
+        if (!cancelled) setTrades(data)
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        if (!cancelled) setError(msg ?? '주문 목록 조회 실패')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void fetchOnMount()
+    return () => { cancelled = true }
+  }, [refreshSignal])
 
   return (
     <div className="px-4 py-3 border-t border-border">

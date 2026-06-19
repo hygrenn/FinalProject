@@ -125,21 +125,32 @@ export function MarketTab() {
   const [trend, setTrend] = useState<string>('neutral')
 
   useEffect(() => {
-    setLoading(true)
-    Promise.all([
-      api.get<IndicesResponse>('/analysis/indices'),
-      api.get<SectorResponse>('/analysis/sector'),
-    ])
-      .then(([idxRes, secRes]) => {
-        setIndices(idxRes.data.indices ?? [])
-        setTrend(idxRes.data.trend ?? 'neutral')
-        if (secRes.data.available) {
-          setSectors(secRes.data.sectors)
-          setSelectedSector(secRes.data.sectors[0] ?? null)
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      try {
+        const [idxRes, secRes] = await Promise.all([
+          api.get<IndicesResponse>('/analysis/indices'),
+          api.get<SectorResponse>('/analysis/sector'),
+        ])
+        if (!cancelled) {
+          setIndices(idxRes.data.indices ?? [])
+          setTrend(idxRes.data.trend ?? 'neutral')
+          if (secRes.data.available) {
+            setSectors(secRes.data.sectors)
+            setSelectedSector(secRes.data.sectors[0] ?? null)
+          }
         }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      } catch {
+        // ignore errors
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
   }, [])
 
   // total_stocks를 크기로 사용 (시총 대체)

@@ -87,7 +87,29 @@ export function RecommendTab() {
     }
   }, [])
 
-  useEffect(() => { fetchRanking() }, [fetchRanking])
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOnMount() {
+      setLoading(true)
+      setFetchError(null)
+      try {
+        const { data: res } = await api.get<RankingResponse>('/analysis/ai-ranking?limit=50')
+        if (!cancelled) setData(res)
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        if (!cancelled) {
+          setFetchError(msg ?? 'AI 추천 데이터를 불러오지 못했습니다.')
+          setData(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void fetchOnMount()
+    return () => { cancelled = true }
+  }, [])
 
   const handleSelect = (item: RankItem) => {
     setFocusedCode(item.code)

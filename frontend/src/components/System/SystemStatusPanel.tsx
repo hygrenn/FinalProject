@@ -88,8 +88,24 @@ export function SystemStatusPanel({ onClose }: SystemStatusPanelProps) {
   }, [])
 
   useEffect(() => {
-    void fetchStatus()
-  }, [fetchStatus])
+    let cancelled = false
+
+    async function fetchOnMount() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await api.get<SystemStatusResponse>('/system/status')
+        if (!cancelled) setData(res.data)
+      } catch {
+        if (!cancelled) setError('상태 조회에 실패했습니다. 백엔드 서버를 확인해 주세요.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void fetchOnMount()
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <div
