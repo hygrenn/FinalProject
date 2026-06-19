@@ -13,8 +13,6 @@ import json
 from datetime import datetime, timedelta
 
 import numpy as np
-import torch
-import torch.nn as nn
 
 from core.redis_client import get_redis
 from services.market_service import _last_trading_day
@@ -22,24 +20,6 @@ from services.market_service import _last_trading_day
 _CACHE_TTL = 3600
 _WINDOW = 10        # 입력 시퀀스 길이 (10거래일)
 _THRESHOLD_SIGMA = 2.0  # 평균 + N*표준편차 초과 시 이상
-
-
-class _Autoencoder(nn.Module):
-    def __init__(self, input_dim: int):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 8),
-            nn.ReLU(),
-            nn.Linear(8, 3),
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(3, 8),
-            nn.ReLU(),
-            nn.Linear(8, input_dim),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.decoder(self.encoder(x))
 
 
 def _fetch_ohlcv(code: str, days: int = 365) -> list[dict]:
@@ -67,6 +47,29 @@ def _fetch_ohlcv(code: str, days: int = 365) -> list[dict]:
 
 
 def _train_and_detect(ohlcv: list[dict]) -> dict:
+    try:
+        import torch
+        import torch.nn as nn
+    except ImportError:
+        return {"anomalies": [], "scores": [], "threshold": 0, "available": False}
+
+    class _Autoencoder(nn.Module):
+        def __init__(self, input_dim: int):
+            super().__init__()
+            self.encoder = nn.Sequential(
+                nn.Linear(input_dim, 8),
+                nn.ReLU(),
+                nn.Linear(8, 3),
+            )
+            self.decoder = nn.Sequential(
+                nn.Linear(3, 8),
+                nn.ReLU(),
+                nn.Linear(8, input_dim),
+            )
+
+        def forward(self, x):
+            return self.decoder(self.encoder(x))
+
     if len(ohlcv) < _WINDOW * 3:
         return {"anomalies": [], "scores": [], "threshold": 0, "available": False}
 

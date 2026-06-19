@@ -13,6 +13,8 @@ export function PortfolioTab() {
   const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null)
   const [chartData, setChartData] = useState<{ date: string; value: number }[]>([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [holdingsLoaded, setHoldingsLoaded] = useState(false)
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -29,12 +31,16 @@ export function PortfolioTab() {
         setHoldingSource(p.holding_source ?? '')
         setPerformanceSource(p.performance_source ?? '')
         setMetrics(metricsRes.data)
+        setHoldingsLoaded(true)
+        setFetchError(null)
         // Convert daily PNL list to cumulative chart data
         const perf: { date: string; pnl: number }[] = perfRes.data ?? []
         let cum = 0
         setChartData(perf.map((d) => { cum += d.pnl; return { date: d.date, value: cum } }))
-      } catch {
-        // keep empty state on error
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        setFetchError(msg ?? '포트폴리오 데이터를 불러오지 못했습니다.')
+        setHoldingsLoaded(false)
       } finally {
         setLoading(false)
       }
@@ -46,21 +52,51 @@ export function PortfolioTab() {
     return <div className="h-full flex items-center justify-center text-muted-foreground text-sm">로딩 중...</div>
   }
 
+  if (fetchError) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
+        <span className="text-sm text-destructive">포트폴리오 조회 실패</span>
+        <span className="text-xs text-muted-foreground">{fetchError}</span>
+        <span className="text-xs text-muted-foreground mt-1">로그인 여부와 서버 상태를 확인해 주세요.</span>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full overflow-y-auto p-4 space-y-4">
-      {/* 요약 카드 */}
-      {(holdingSource || performanceSource) && (
+      {/* 데이터 출처 설명 박스 */}
+      <div
+        data-testid="portfolio-description-box"
+        className="text-xs text-muted-foreground bg-muted/40 border border-border rounded-lg px-3 py-2.5 space-y-1"
+      >
+        {holdingSource ? (
+          <>
+            <p>
+              보유 현황은{' '}
+              <span className="text-foreground font-medium">{holdingSource}</span>
+              에서 조회합니다.
+            </p>
+            <p>
+              수익 추이, 승률, MDD는{' '}
+              {performanceSource
+                ? <span className="text-foreground font-medium">{performanceSource}</span>
+                : '앱에서 발생한 체결 기록'}
+              을 기준으로 계산합니다.
+            </p>
+          </>
+        ) : (
+          <p className="text-yellow-400">
+            KIS 잔고 조회에 실패해 앱 DB 포트폴리오 기록을 표시합니다.
+          </p>
+        )}
+      </div>
+
+      {/* 소스 배지 — holdingSource가 없을 때만 표시 (description box와 중복 방지) */}
+      {!holdingSource && performanceSource && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {holdingSource && (
-            <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
-              보유 현황: <span className="text-foreground">{holdingSource}</span>
-            </div>
-          )}
-          {performanceSource && (
-            <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
-              성과 지표: <span className="text-foreground">{performanceSource}</span>
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2">
+            성과 지표: <span className="text-foreground">{performanceSource}</span>
+          </div>
         </div>
       )}
 
@@ -124,8 +160,10 @@ export function PortfolioTab() {
       {/* 보유종목 */}
       <div className="bg-card border border-border rounded-lg p-3">
         <div className="text-sm font-semibold mb-3">보유종목</div>
-        {holdings.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center py-4">보유 종목이 없습니다</div>
+        {holdingsLoaded && holdings.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-4">
+            조회 성공 · 현재 보유 중인 종목이 없습니다
+          </div>
         ) : (
           <div className="space-y-2">
             {holdings.map((h) => (

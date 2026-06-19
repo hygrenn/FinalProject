@@ -68,11 +68,23 @@ export function ComprehensivePanel() {
   useEffect(() => {
     if (!selectedStock?.code) return
     const code = selectedStock.code
-    Promise.resolve()
-      .then(() => { setLoading(true); setData(null); return api.get<ComprehensiveResponse>(`/analysis/comprehensive/${code}`) })
-      .then(({ data }) => setData(data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      setData(null)
+      try {
+        const { data } = await api.get<ComprehensiveResponse>(`/analysis/comprehensive/${code}`)
+        if (!cancelled) setData(data)
+      } catch {
+        if (!cancelled) setData(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
   }, [selectedStock?.code])
 
   const score = data?.overall_score

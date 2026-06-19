@@ -3,7 +3,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { X, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
+import { useUIStore } from '@/store/uiStore'
 import api from '@/lib/api'
+import { RecentTradesPanel } from '@/components/Trade/RecentTradesPanel'
 
 interface AccountSummary {
   total_asset: number
@@ -23,6 +25,11 @@ interface HoldingItem {
   eval_amount: number
   profit_loss: number
   return_pct: number
+}
+
+interface AccountConfig {
+  mode: 'paper' | 'real'
+  account_no: string
 }
 
 interface AccountData {
@@ -55,9 +62,22 @@ interface AccountPanelProps {
 
 export function AccountPanel({ onClose }: AccountPanelProps) {
   const { user } = useAuthStore()
+  const lastOrderAt = useUIStore((s) => s.lastOrderAt)
+  const [accountConfig, setAccountConfig] = useState<AccountConfig | null>(null)
   const [data, setData] = useState<AccountData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const fetchAccountConfig = useCallback(async () => {
+    if (!user) return
+    try {
+      const { data: res } = await api.get<AccountConfig>('/account/config')
+      setAccountConfig(res)
+    } catch {
+      setAccountConfig(null)
+    }
+  }, [user])
+
   const fetchBalance = useCallback(async () => {
     if (!user) return
     setLoading(true)
@@ -74,9 +94,14 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
   }, [user])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void fetchBalance() }, 0)
+    const timer = window.setTimeout(() => {
+      void fetchAccountConfig()
+      void fetchBalance()
+    }, 0)
     return () => window.clearTimeout(timer)
-  }, [fetchBalance])
+  }, [fetchAccountConfig, fetchBalance])
+
+  const displayMode = data?.mode ?? accountConfig?.mode ?? (user?.mode === 'real' ? 'real' : 'paper')
 
   return (
     <div className="fixed inset-y-0 right-0 w-80 bg-card border-l border-border shadow-2xl z-50 flex flex-col">
@@ -84,14 +109,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
       <div className="flex items-center justify-between px-4 h-12 border-b border-border shrink-0">
         <div>
           <span className="font-semibold text-sm">내 계좌</span>
-          {data && (
-            <span className="ml-2 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              {data.mode === 'paper' ? '모의투자' : '실계좌'}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={fetchBalance} disabled={loading}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { void fetchAccountConfig(); void fetchBalance() }} disabled={loading}>
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
@@ -122,6 +142,22 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
           </div>
         )}
 
+        {/* 조회 모드 안내 — data null(잔고 조회 실패)이어도 항상 표시 */}
+        {user && (
+          <div
+            data-testid="account-mode-info"
+            className="mx-4 mt-3 text-xs text-muted-foreground bg-muted/40 border border-border rounded p-2 space-y-1"
+          >
+            <p>
+              현재 조회 모드:{' '}
+              <span className="font-medium text-foreground">
+                {displayMode === 'paper' ? '모의투자' : '실계좌'}
+              </span>
+            </p>
+            <p>실계좌/모의계좌 전환은 리스크/설정 화면에서만 변경합니다.</p>
+          </div>
+        )}
+
         {data && (
           <>
             {/* 계좌 요약 */}
@@ -135,6 +171,7 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                   ? '실제 주문이 이 계좌로 실행됩니다.'
                   : '주문은 모의투자 계좌로 실행됩니다.'}
               </div>
+
               <div className="text-xs text-muted-foreground mb-1">{data.account_no}</div>
               <div className="text-xl font-bold mb-0.5">{data.summary.total_asset.toLocaleString()}원</div>
               <div className="text-sm">
@@ -162,7 +199,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 보유 종목 ({data.holdings.length}개)
               </div>
               {data.holdings.length === 0 ? (
-                <div className="text-xs text-muted-foreground text-center py-6">보유 종목 없음</div>
+                <div className="text-xs text-muted-foreground text-center py-6">
+                  KIS 계좌 조회 성공 · 현재 보유 중인 종목이 없습니다
+                </div>
               ) : (
                 <div className="space-y-3">
                   {data.holdings.map((h) => {
@@ -196,6 +235,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
             </div>
           </>
         )}
+
+        {/* 최근 주문 패널 — 계좌/보유 종목과 같은 맥락에 배치 */}
+        {user && <RecentTradesPanel refreshSignal={lastOrderAt} />}
       </div>
 
       {data && (
