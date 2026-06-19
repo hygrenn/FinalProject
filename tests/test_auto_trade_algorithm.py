@@ -259,3 +259,184 @@ async def test_run_cycle_does_not_buy_when_cash_reserve_would_be_broken(db_sessi
     assert "가용 예산" in reason or "현금 보유" in reason, (
         f"expected cash-reserve reason but got: {reason!r}"
     )
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_respects_signal_threshold(db_session):
+    """signal_threshold 미달 후보는 매수 대상에서 제외된다."""
+    from services.auto_trade_service import run_cycle
+
+    # 1. 사용자 생성
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    # 2. AutoTradeConfig: signal_threshold=80 (기본값 70보다 높음), 예산 충분
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        signal_threshold=80,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    # 3. BUY 후보 score=60 (threshold 80 미달)
+    buy_candidates = [{"code": "005930", "score": 60.0}]
+
+    with patch(
+        "services.auto_trade_service._get_buy_candidates",
+        new=AsyncMock(return_value=buy_candidates),
+    ), patch(
+        "services.market_service.get_stock_current_price",
+        new=AsyncMock(return_value={"close": 70_000, "name": "삼성전자"}),
+    ), patch(
+        "services.ai_service.get_signal",
+        new=AsyncMock(return_value={"signal": "HOLD", "signal_score": 50}),
+    ):
+        result = await run_cycle(user_id=user_id, db=db_session)
+
+    assert result["executed"] == 0, (
+        f"expected 0 executions but got {result['executed']}; "
+        f"no_trade_reason={result.get('no_trade_reason')}"
+    )
+    reason = result.get("no_trade_reason") or ""
+    assert "미달" in reason, (
+        f"expected '미달' in no_trade_reason but got: {reason!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_respects_max_positions(db_session):
+    """max_positions 한도 도달 시 BUY 후보가 있어도 신규 매수하지 않는다."""
+    from services.auto_trade_service import run_cycle
+
+    # 1. 사용자 생성
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    # 2. AutoTradeConfig: max_positions=1, 예산 충분, signal_threshold=0 (모든 후보 통과)
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=1_000_000,
+        max_positions=1,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    # 3. 이미 1 포지션 보유 중 → remaining_slots = 1 - 1 = 0
+    db_session.add(Portfolio(
+        user_id=user_id,
+        stock_code="000660",
+        stock_name="SK하이닉스",
+        quantity=1,
+        avg_price=10_000,
+        mode="paper",
+    ))
+    await db_session.flush()
+
+    # 4. 신선한 BUY 후보 (000660이 아닌 종목)
+    buy_candidates = [{"code": "005930", "score": 90.0}]
+
+    with patch(
+        "services.auto_trade_service._get_buy_candidates",
+        new=AsyncMock(return_value=buy_candidates),
+    ), patch(
+        "services.market_service.get_stock_current_price",
+        new=AsyncMock(return_value={"close": 10_000, "name": "SK하이닉스"}),
+    ), patch(
+        "services.ai_service.get_signal",
+        new=AsyncMock(return_value={"signal": "HOLD", "signal_score": 50}),
+    ):
+        result = await run_cycle(user_id=user_id, db=db_session)
+
+    assert result["executed"] == 0, (
+        f"expected 0 executions but got {result['executed']}; "
+        f"no_trade_reason={result.get('no_trade_reason')}"
+    )
+    reason = result.get("no_trade_reason") or ""
+    assert "한도" in reason, (
+        f"expected '한도' in no_trade_reason but got: {reason!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_does_not_buy_when_max_positions_already_reached(db_session):
+    """max_positions=2, 2개 보유 → remaining_slots=0 → 신규 매수 없음."""
+    from services.auto_trade_service import run_cycle
+
+    # 1. 사용자 생성
+    user_id = uuid.uuid4()
+    db_session.add(User(
+        id=user_id,
+        email=f"algo-test-{uuid.uuid4().hex[:6]}@test.com",
+        password_hash="x",
+        is_verified=True,
+    ))
+    await db_session.flush()
+
+    # 2. AutoTradeConfig: max_positions=2, signal_threshold=0
+    db_session.add(AutoTradeConfig(
+        user_id=user_id,
+        enabled=True,
+        mode="paper",
+        total_budget=2_000_000,
+        max_positions=2,
+        signal_threshold=0,
+        stop_loss_pct=5.0,
+        take_profit_pct=10.0,
+    ))
+    await db_session.flush()
+
+    # 3. 2개 종목 이미 보유
+    for code, name in [("000660", "SK하이닉스"), ("035720", "카카오")]:
+        db_session.add(Portfolio(
+            user_id=user_id,
+            stock_code=code,
+            stock_name=name,
+            quantity=1,
+            avg_price=10_000,
+            mode="paper",
+        ))
+    await db_session.flush()
+
+    # 4. 신선한 BUY 후보
+    buy_candidates = [{"code": "005930", "score": 90.0}]
+
+    with patch(
+        "services.auto_trade_service._get_buy_candidates",
+        new=AsyncMock(return_value=buy_candidates),
+    ), patch(
+        "services.market_service.get_stock_current_price",
+        new=AsyncMock(return_value={"close": 10_000, "name": "삼성전자"}),
+    ), patch(
+        "services.ai_service.get_signal",
+        new=AsyncMock(return_value={"signal": "HOLD", "signal_score": 50}),
+    ):
+        result = await run_cycle(user_id=user_id, db=db_session)
+
+    assert result["executed"] == 0, (
+        f"expected 0 executions but got {result['executed']}; "
+        f"no_trade_reason={result.get('no_trade_reason')}"
+    )
+    reason = result.get("no_trade_reason") or ""
+    assert "한도" in reason, (
+        f"expected '한도' in no_trade_reason but got: {reason!r}"
+    )

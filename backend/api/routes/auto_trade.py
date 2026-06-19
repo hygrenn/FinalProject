@@ -17,6 +17,9 @@ class AutoTradeConfigUpdate(BaseModel):
     enabled: Optional[bool] = None
     mode: Optional[str] = None
     total_budget: Optional[int] = Field(default=None, gt=0)
+    budget_per_trade: Optional[int] = Field(default=None, gt=0)  # 미사용, 예약 필드
+    max_positions: Optional[int] = Field(default=None, ge=1, le=20)
+    signal_threshold: Optional[int] = Field(default=None, ge=0, le=100)
     stop_loss_pct: Optional[float] = Field(default=None, ge=1.0, le=30.0)
     take_profit_pct: Optional[float] = Field(default=None, ge=1.0, le=100.0)
 
@@ -42,6 +45,8 @@ def _cfg_to_dict(cfg: Any) -> dict:
         "enabled": cfg.enabled,
         "mode": cfg.mode,
         "total_budget": cfg.total_budget,
+        "max_positions": cfg.max_positions,
+        "signal_threshold": cfg.signal_threshold,
         "stop_loss_pct": cfg.stop_loss_pct,
         "take_profit_pct": cfg.take_profit_pct,
         "created_at": cfg.created_at.isoformat() if cfg.created_at else None,

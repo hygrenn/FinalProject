@@ -61,7 +61,7 @@ async def get_config(user_id: UUID, db: AsyncSession) -> AutoTradeConfig:
 
 async def update_config(user_id: UUID, data: dict, db: AsyncSession) -> AutoTradeConfig:
     cfg = await get_config(user_id, db)
-    allowed = {"enabled", "mode", "total_budget", "stop_loss_pct", "take_profit_pct"}
+    allowed = {"enabled", "mode", "total_budget", "stop_loss_pct", "take_profit_pct", "max_positions", "signal_threshold"}
     for key, val in data.items():
         if key in allowed:
             setattr(cfg, key, val)
@@ -338,6 +338,8 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
 
     candidates: list[dict] = []
     held: set[str] = set()
+    fresh: list[dict] = []
+    remaining_slots: int = 0
 
     if available > 0:
         candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
@@ -348,7 +350,12 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             )
         )
         held = {r[0] for r in held_res.fetchall()}
-        fresh = [c for c in candidates if c["code"] not in held]
+        fresh = [
+            c for c in candidates
+            if c["code"] not in held and c["score"] >= cfg.signal_threshold
+        ]
+        remaining_slots = max(0, cfg.max_positions - len(held))
+        fresh = fresh[:remaining_slots]
 
         allocations = _allocate(fresh, available, cfg.total_budget)
 
@@ -391,6 +398,10 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             no_trade_reason = "분석된 BUY 종목 없음 (신호 데이터 부족)"
         elif all(c["code"] in held for c in candidates):
             no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 이미 보유 중"
+        elif remaining_slots == 0:
+            no_trade_reason = f"보유 종목 수 한도 도달 ({len(held)}/{cfg.max_positions})"
+        elif not fresh:
+            no_trade_reason = f"BUY 후보 {len(candidates)}개 모두 신호 점수 미달 (기준: {cfg.signal_threshold}점)"
         else:
             no_trade_reason = f"BUY 후보 {len(candidates)}개 분석 — 1주 매수 금액 미달"
 
