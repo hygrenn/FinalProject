@@ -101,7 +101,11 @@ export function CandleChart({ candles, onChartReady }: CandleChartProps) {
 
   // 데이터만 별도로 업데이트
   useEffect(() => {
-    if (!seriesRef.current || candles.length === 0) return
+    if (!seriesRef.current) return
+    if (candles.length === 0) {
+      seriesRef.current.setData([])
+      return
+    }
     const isIntraday = typeof candles[0].time === 'number'
     chartInstanceRef.current?.applyOptions({ timeScale: { timeVisible: isIntraday } })
     seriesRef.current.setData(candles as CandlestickData<Time>[])

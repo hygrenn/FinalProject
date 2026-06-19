@@ -141,7 +141,7 @@ export function MarketTab() {
           setSelectedSector(secRes.data.sectors[0] ?? null)
         }
       })
-      .catch(() => {})
+      .catch((_e) => { if (import.meta.env.DEV) console.warn('[MarketTab] 시장 데이터 fetch 실패:', _e) })
       .finally(() => setLoading(false))
   }, [])
 

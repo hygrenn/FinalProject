@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from tasks import celery_app
+
+logger = logging.getLogger(__name__)
 
 
 @celery_app.task
@@ -15,9 +18,14 @@ async def _refresh_async() -> None:
     from services.ai_service import calculate_signal
 
     codes = [p.stem for p in WEIGHTS_DIR.glob("*.pth")]
+    success, failed = 0, []
     for code in codes:
         try:
             async with AsyncSessionLocal() as db:
                 await calculate_signal(code, db)
-        except Exception:
-            pass
+            success += 1
+        except Exception as e:
+            logger.error("[AI 갱신 실패] %s: %s", code, e)
+            failed.append(code)
+
+    logger.info("[AI 갱신 완료] 성공=%d 실패=%d %s", success, len(failed), failed or "")

@@ -74,8 +74,8 @@ def _train_and_detect(ohlcv: list[dict]) -> dict:
     # 일별 수익률로 정규화 (스케일 불변)
     returns = np.diff(closes) / (closes[:-1] + 1e-9)
 
-    # 슬라이딩 윈도우로 입력 시퀀스 생성
-    X = np.array([returns[i: i + _WINDOW] for i in range(len(returns) - _WINDOW)])
+    # 슬라이딩 윈도우로 입력 시퀀스 생성 (마지막 윈도우까지 포함)
+    X = np.array([returns[i: i + _WINDOW] for i in range(len(returns) - _WINDOW + 1)])
     if len(X) < 20:
         return {"anomalies": [], "scores": [], "threshold": 0, "available": False}
 
@@ -83,6 +83,7 @@ def _train_and_detect(ohlcv: list[dict]) -> dict:
     mu, sigma = X.mean(), X.std() + 1e-9
     X_norm = (X - mu) / sigma
 
+    torch.set_num_threads(1)  # 동시 요청 시 CPU 대경합 방지
     tensor = torch.tensor(X_norm, dtype=torch.float32)
     model = _Autoencoder(input_dim=_WINDOW)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -106,10 +107,10 @@ def _train_and_detect(ohlcv: list[dict]) -> dict:
     # 이상 포인트: 오류가 임계값 초과
     anomaly_indices = np.where(errors > threshold)[0]
 
-    # 인덱스 → 날짜 매핑 (윈도우 끝 날짜 기준, ohlcv[_WINDOW + i])
+    # 인덱스 → 날짜 매핑 (윈도우 끝 날짜 기준, returns[i:i+_WINDOW] → ohlcv[i+_WINDOW])
     anomalies = []
     for idx in anomaly_indices:
-        date_idx = int(idx) + _WINDOW + 1   # diff로 한 칸 밀림
+        date_idx = int(idx) + _WINDOW   # diff로 한 칸 밀림이 이미 ohlcv 기준으로 보정됨
         if date_idx < len(ohlcv):
             anomalies.append({
                 "date":  ohlcv[date_idx]["date"],
@@ -120,7 +121,7 @@ def _train_and_detect(ohlcv: list[dict]) -> dict:
     # 점수 리스트 (차트 오버레이용): 전체 날짜 × 오류값
     score_list = []
     for i, err in enumerate(errors):
-        date_idx = i + _WINDOW + 1
+        date_idx = i + _WINDOW
         if date_idx < len(ohlcv):
             score_list.append({
                 "date":  ohlcv[date_idx]["date"],
@@ -149,5 +150,7 @@ async def get_anomaly(code: str) -> dict:
         result = {"anomalies": [], "scores": [], "threshold": 0, "available": False}
 
     result["code"] = code
-    await redis.setex(cache_key, _CACHE_TTL, json.dumps(result))
+    # 실패(available=False)는 5분 TTL로 짧게 캐싱해 재시도 가능하게
+    ttl = _CACHE_TTL if result.get("available") else 300
+    await redis.setex(cache_key, ttl, json.dumps(result))
     return result

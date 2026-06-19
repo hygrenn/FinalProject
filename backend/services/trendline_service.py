@@ -122,5 +122,6 @@ async def get_trendline(code: str) -> dict:
         result = {"lines": [], "available": False}
 
     result["code"] = code
-    await redis.setex(cache_key, _CACHE_TTL, json.dumps(result))
+    ttl = _CACHE_TTL if result.get("available") else 300
+    await redis.setex(cache_key, ttl, json.dumps(result))
     return result

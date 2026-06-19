@@ -32,19 +32,23 @@ export function TrendlineOverlay({ chart, data }: Props) {
 
     data.lines.forEach((line) => {
       if (line.points.length < 2) return
-      const s = chart.addSeries(LineSeries, {
-        color: line.color,
-        lineWidth: 2,
-        lineStyle: 0,   // Solid
-        title: line.label,
-        lastValueVisible: false,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-      })
-      s.setData(
-        line.points.map((p) => ({ time: p.date as Time, value: p.price }))
-      )
-      seriesRefs.current.push(s)
+      try {
+        const s = chart.addSeries(LineSeries, {
+          color: line.color,
+          lineWidth: 2,
+          lineStyle: 0,   // Solid
+          title: line.label,
+          lastValueVisible: false,
+          priceLineVisible: false,
+          crosshairMarkerVisible: false,
+        })
+        s.setData(
+          line.points.map((p) => ({ time: p.date as Time, value: p.price }))
+        )
+        seriesRefs.current.push(s)
+      } catch (e) {
+        console.warn('[TrendlineOverlay] addSeries 실패:', line.label, e)
+      }
     })
 
     return () => {

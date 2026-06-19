@@ -103,7 +103,15 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     if auto_verify:
         return {"message": "회원가입이 완료됐습니다. 바로 로그인하세요."}
-    await send_verification_email(body.email)
+    try:
+        await send_verification_email(body.email)
+    except Exception:
+        # 이메일 발송 실패 — 계정은 생성됐으나 미인증 상태
+        # 로그인 페이지에서 재발송을 안내
+        return {
+            "message": "회원가입은 완료됐으나 인증 이메일 발송에 실패했습니다. 로그인 페이지에서 재발송을 요청하세요.",
+            "email_failed": True,
+        }
     return {"message": "인증 이메일을 발송했습니다"}
 
 
@@ -230,6 +238,7 @@ async def google_callback(
         if google_id:
             user.google_id = google_id
         user.is_verified = True
+        user.password_hash = None  # 로컬 비밀번호 무효화 — pre-auth 계정 탈취 방지
     else:
         user = User(email=email, google_id=google_id, is_verified=True)
         db.add(user)
