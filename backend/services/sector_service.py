@@ -73,9 +73,9 @@ def _fetch_sectors_html() -> list[dict]:
         resp = client.get(_NAVER_URL)
         resp.raise_for_status()
 
-    # Naver Finance 업종 페이지는 UTF-8 로 반환됨 (meta charset=utf-8 확인)
+    # Naver 업종 페이지는 EUC-KR 인코딩 — resp.text 는 잘못 디코딩될 수 있음
     try:
-        content = resp.text
+        content = resp.content.decode("euc-kr", errors="replace")
     except Exception:
         content = resp.content.decode("utf-8", errors="ignore")
 
@@ -88,8 +88,10 @@ def _fetch_sectors_html() -> list[dict]:
         flat       = int(m.group(6))
         down       = int(m.group(7))
 
-        # "기타" 카테고리 제외 (너무 넓고 의미 없음)
+        # "기타" 카테고리 및 주요 업종 외 세분화 항목 제외
         if name == "기타":
+            continue
+        if _MAJOR_SECTORS and name not in _MAJOR_SECTORS:
             continue
 
         sectors.append({
@@ -128,6 +130,10 @@ async def get_sector_heatmap() -> dict:
         "sectors":   sectors,
     }
 
-    ttl = _TTL_OPEN if _is_market_open() else _TTL_CLOSED
-    await redis.setex(_CACHE_KEY, ttl, json.dumps(result))
+    if len(sectors) == 0:
+        # 스크래핑 실패 시 5분 TTL로 짧게 캐싱해 재시도 가능하게
+        await redis.setex(_CACHE_KEY, 300, json.dumps(result))
+    else:
+        ttl = _TTL_OPEN if _is_market_open() else _TTL_CLOSED
+        await redis.setex(_CACHE_KEY, ttl, json.dumps(result))
     return result

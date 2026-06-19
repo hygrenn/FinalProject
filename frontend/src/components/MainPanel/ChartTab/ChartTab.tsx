@@ -78,13 +78,26 @@ export function ChartTab() {
   const [srData, setSrData]           = useState<SRData | null>(null)
   const [trendlineData, setTrendlineData] = useState<TrendlineData | null>(null)
   const [anomalyData, setAnomalyData] = useState<AnomalyData | null>(null)
-  const [showSR, setShowSR]           = useState(true)
-  const [showTrend, setShowTrend]     = useState(true)
+  const [lstmAvailable, setLstmAvailable] = useState(false)
+  const [showPrediction, setShowPrediction] = useState(false)
+  const [showSR, setShowSR]           = useState(false)
+  const [showTrend, setShowTrend]     = useState(false)
   const [showAnomaly, setShowAnomaly] = useState(false)
 
   useEffect(() => {
     if (!selectedStock?.code) return
     const code = selectedStock.code
+
+    // 종목 전환 시 이전 데이터 전체 초기화 (microtask로 defer해 lint 규칙 준수)
+    Promise.resolve().then(() => {
+      setCandles([])
+      setPatterns([])
+      setPrediction(null)
+      setLstmAvailable(false)
+      setSrData(null)
+      setTrendlineData(null)
+      setAnomalyData(null)
+    })
 
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -118,6 +131,7 @@ export function ChartTab() {
     fetchChart()
 
     api.get<PatternResponse>(`/ai/${code}/patterns`).then(({ data }) => {
+      if (cancelled) return
       const raw = data?.patterns ?? []
       if (raw.length === 0) return
       setPatterns(raw.map((p) => {
@@ -130,7 +144,7 @@ export function ChartTab() {
           description: info?.description ?? '',
         }
       }))
-    }).catch(() => {})
+    }).catch((_e) => { if (import.meta.env.DEV) console.warn('[ChartTab] 패턴 fetch 실패:', _e) })
 
     // AI 분석 3종 병렬 요청
     Promise.all([
@@ -145,15 +159,18 @@ export function ChartTab() {
     })
 
     api.get<PredictResponse>(`/ai/${code}/predict`).then(({ data }) => {
+      if (cancelled) return
+      const available = data?.lstm_available ?? false
+      setLstmAvailable(available)
+      if (!available) { setShowPrediction(false); return }
       const p = data?.prediction
       if (!p) return
       const bullish = p.bullish ?? []
       const base = p.base ?? []
       const bearish = p.bearish ?? []
-      // 학습 가중치가 없으면 빈 배열이 오므로 mock을 유지한다.
       if (bullish.length === 0 && base.length === 0 && bearish.length === 0) return
       setPrediction({ bullish, base, bearish, confidence: 0 })
-    }).catch(() => {})
+    }).catch((_e) => { if (import.meta.env.DEV) console.warn('[ChartTab] 예측 fetch 실패:', _e) })
     return () => {
       cancelled = true
       if (timer) clearTimeout(timer)
@@ -214,23 +231,34 @@ export function ChartTab() {
           </button>
         ))}
         <div className="ml-auto flex items-center gap-1">
-          {[
-            { key: 'sr',      label: 'S/R',   active: showSR,      set: setShowSR },
-            { key: 'trend',   label: '추세선', active: showTrend,   set: setShowTrend },
-            { key: 'anomaly', label: '이상감지', active: showAnomaly, set: setShowAnomaly },
-          ].map(({ key, label, active, set }) => (
-            <button
-              key={key}
-              onClick={() => set((v) => !v)}
-              className={cn(
-                'px-2 py-0.5 text-[11px] rounded border transition-colors',
-                active
-                  ? 'bg-primary/20 border-primary/50 text-primary'
-                  : 'border-border text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {label}
-            </button>
+          {([
+            {
+              key: 'prediction', label: '예측선',  active: showPrediction, set: setShowPrediction,
+              desc: lstmAvailable ? 'LSTM 5일 예측 시나리오 (상승·기본·하락 3선)' : 'LSTM 미학습 — 백엔드 모델 학습 후 사용 가능',
+              disabled: !lstmAvailable,
+            },
+            { key: 'sr',      label: 'S/R',    active: showSR,      set: setShowSR,      desc: 'K-means 클러스터링 지지·저항 레벨',                                                                                         disabled: false },
+            { key: 'trend',   label: '추세선', active: showTrend,   set: setShowTrend,   desc: trendlineData && !trendlineData.available ? '추세선 없음 — 유효한 추세 패턴 미감지 (R²<0.5)' : '고점·저점 선형 회귀 추세선 (R²≥0.5 필터)', disabled: false },
+            { key: 'anomaly', label: '이상감지', active: showAnomaly, set: setShowAnomaly, desc: 'Autoencoder 이상 점수 하단 차트 (주황=이상 구간)',                                                                                    disabled: false },
+          ] as const).map(({ key, label, active, set, desc, disabled }) => (
+            <div key={key} className="relative group">
+              <button
+                onClick={() => { if (!disabled) set((v) => !v) }}
+                className={cn(
+                  'px-2 py-0.5 text-[11px] rounded border transition-colors',
+                  disabled
+                    ? 'border-border text-muted-foreground/40 cursor-not-allowed'
+                    : active
+                      ? 'bg-primary/20 border-primary/50 text-primary'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {label}
+              </button>
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 text-[10px] bg-popover border border-border text-popover-foreground rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
+                {desc}
+              </div>
+            </div>
           ))}
         </div>
         {loadingIntraday && (
@@ -261,7 +289,7 @@ export function ChartTab() {
       <div className="flex flex-col flex-1 min-h-0 gap-0.5 p-1">
         <div className="flex-[3] min-h-0">
           <CandleChart candles={candles} onChartReady={setChart} />
-          {!INTRADAY.has(interval) && (
+          {!INTRADAY.has(interval) && showPrediction && (
             <PredictionOverlay
               chart={chart}
               prediction={prediction}

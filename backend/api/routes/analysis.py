@@ -8,7 +8,12 @@ from fastapi import APIRouter, Query, Request
 from api.middleware.rate_limit import limiter
 from services import comprehensive_service, fundamental_service, investor_service, market_index_service, recommend_service, screener_service, sector_service, stock_data_service, support_resistance_service, anomaly_service, trendline_service
 
+import asyncio
+
 router = APIRouter()
+
+# 백그라운드 태스크 강한 참조 — GC 소멸 방지
+_bg_tasks: set = set()
 
 
 @router.get("/fundamental/{code}")
@@ -50,8 +55,9 @@ async def get_ai_ranking(request: Request, limit: int = Query(50, ge=1, le=100))
 @limiter.limit("2/minute")
 async def warmup_cache(request: Request):
     """스크리너/랭킹 공유 캐시를 강제 갱신 (백그라운드)."""
-    import asyncio
-    asyncio.create_task(stock_data_service.get_all_stock_data(force_refresh=True))
+    task = asyncio.create_task(stock_data_service.get_all_stock_data(force_refresh=True))
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
     return {"status": "warming up"}
 
 

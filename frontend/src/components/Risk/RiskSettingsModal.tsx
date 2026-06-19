@@ -22,7 +22,7 @@ export function RiskSettingsModal({ open, onClose }: RiskSettingsModalProps) {
       setMaxPerStockPct(String(data.max_per_stock_pct))
       setDailyLossLimitPct(String(data.daily_loss_limit_pct))
       setStopLossEnabled(data.stop_loss_enabled ?? false)
-    }).catch(() => {})
+    }).catch((_e) => { if (import.meta.env.DEV) console.warn('[RiskSettings] 설정 로드 실패:', _e) })
   }, [open])
 
   const handleSave = async (e: React.FormEvent) => {

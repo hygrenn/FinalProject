@@ -104,5 +104,7 @@ async def get_support_resistance(code: str) -> dict:
         result = {"support": [], "resistance": [], "current_price": 0}
 
     result["code"] = code
-    await redis.setex(cache_key, _CACHE_TTL, json.dumps(result))
+    has_data = bool(result.get("support") or result.get("resistance"))
+    ttl = _CACHE_TTL if has_data else 300
+    await redis.setex(cache_key, ttl, json.dumps(result))
     return result
