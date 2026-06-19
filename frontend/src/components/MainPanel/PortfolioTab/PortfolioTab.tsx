@@ -13,6 +13,8 @@ export function PortfolioTab() {
   const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null)
   const [chartData, setChartData] = useState<{ date: string; value: number }[]>([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [holdingsLoaded, setHoldingsLoaded] = useState(false)
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -29,12 +31,16 @@ export function PortfolioTab() {
         setHoldingSource(p.holding_source ?? '')
         setPerformanceSource(p.performance_source ?? '')
         setMetrics(metricsRes.data)
+        setHoldingsLoaded(true)
+        setFetchError(null)
         // Convert daily PNL list to cumulative chart data
         const perf: { date: string; pnl: number }[] = perfRes.data ?? []
         let cum = 0
         setChartData(perf.map((d) => { cum += d.pnl; return { date: d.date, value: cum } }))
-      } catch {
-        // keep empty state on error
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        setFetchError(msg ?? '포트폴리오 데이터를 불러오지 못했습니다.')
+        setHoldingsLoaded(false)
       } finally {
         setLoading(false)
       }
@@ -44,6 +50,16 @@ export function PortfolioTab() {
 
   if (loading) {
     return <div className="h-full flex items-center justify-center text-muted-foreground text-sm">로딩 중...</div>
+  }
+
+  if (fetchError) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
+        <span className="text-sm text-destructive">포트폴리오 조회 실패</span>
+        <span className="text-xs text-muted-foreground">{fetchError}</span>
+        <span className="text-xs text-muted-foreground mt-1">로그인 여부와 서버 상태를 확인해 주세요.</span>
+      </div>
+    )
   }
 
   return (
@@ -124,8 +140,10 @@ export function PortfolioTab() {
       {/* 보유종목 */}
       <div className="bg-card border border-border rounded-lg p-3">
         <div className="text-sm font-semibold mb-3">보유종목</div>
-        {holdings.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center py-4">보유 종목이 없습니다</div>
+        {holdingsLoaded && holdings.length === 0 ? (
+          <div className="text-xs text-muted-foreground text-center py-4">
+            조회 성공 · 현재 보유 중인 종목이 없습니다
+          </div>
         ) : (
           <div className="space-y-2">
             {holdings.map((h) => (

@@ -162,7 +162,9 @@ export function AccountPanel({ onClose }: AccountPanelProps) {
                 보유 종목 ({data.holdings.length}개)
               </div>
               {data.holdings.length === 0 ? (
-                <div className="text-xs text-muted-foreground text-center py-6">보유 종목 없음</div>
+                <div className="text-xs text-muted-foreground text-center py-6">
+                  KIS 계좌 조회 성공 · 현재 보유 중인 종목이 없습니다
+                </div>
               ) : (
                 <div className="space-y-3">
                   {data.holdings.map((h) => {

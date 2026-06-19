@@ -11,6 +11,7 @@ from api.middleware.rate_limit import limiter
 from api.routes import account as account_router
 from api.routes import ai as ai_router
 from api.routes import analysis as analysis_router
+from api.routes import system as system_router
 from api.routes import alerts as alerts_router
 from api.routes import auth as auth_router
 from api.routes import backtest as backtest_router
@@ -60,6 +61,7 @@ app.include_router(simulate_router.router, prefix="/simulate", tags=["simulate"]
 app.include_router(watchlist_router.router, prefix="/watchlist", tags=["watchlist"])
 app.include_router(account_router.router, prefix="/account", tags=["account"])
 app.include_router(analysis_router.router, prefix="/analysis", tags=["analysis"])
+app.include_router(system_router.router, prefix="/system", tags=["system"])
 
 
 @app.get("/health")

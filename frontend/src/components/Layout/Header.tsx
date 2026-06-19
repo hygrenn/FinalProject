@@ -1,5 +1,5 @@
 // frontend/src/components/Layout/Header.tsx
-import { Search, Sun, Moon, User, Settings } from 'lucide-react'
+import { Search, Sun, Moon, User, Settings, Activity } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useUIStore } from '@/store/uiStore'
@@ -8,6 +8,7 @@ import { useStockStore } from '@/store/stockStore'
 import { MOCK_STOCKS } from '@/lib/mockData'
 import { useState } from 'react'
 import { RiskSettingsModal } from '@/components/Risk/RiskSettingsModal'
+import { SystemStatusPanel } from '@/components/System/SystemStatusPanel'
 
 export function Header({ onLoginClick, onAccountClick }: { onLoginClick: () => void; onAccountClick?: () => void }) {
   const { darkMode, toggleDarkMode } = useUIStore()
@@ -16,6 +17,7 @@ export function Header({ onLoginClick, onAccountClick }: { onLoginClick: () => v
   const [query, setQuery] = useState('')
   const [results, setResults] = useState(MOCK_STOCKS.slice(0, 0))
   const [riskOpen, setRiskOpen] = useState(false)
+  const [statusOpen, setStatusOpen] = useState(false)
 
   const handleSearch = (q: string) => {
     setQuery(q)
@@ -62,6 +64,9 @@ export function Header({ onLoginClick, onAccountClick }: { onLoginClick: () => v
       </div>
 
       <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={() => setStatusOpen(true)} aria-label="시스템 상태">
+          <Activity className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" onClick={() => setRiskOpen(true)} aria-label="리스크 설정">
           <Settings className="h-4 w-4" />
         </Button>
@@ -80,6 +85,7 @@ export function Header({ onLoginClick, onAccountClick }: { onLoginClick: () => v
         )}
       </div>
       <RiskSettingsModal open={riskOpen} onClose={() => setRiskOpen(false)} />
+      {statusOpen && <SystemStatusPanel onClose={() => setStatusOpen(false)} />}
     </header>
   )
 }

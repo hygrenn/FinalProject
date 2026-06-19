@@ -3,6 +3,7 @@ import { useStockStore } from '@/store/stockStore'
 import { ComprehensivePanel } from '@/components/Analysis/ComprehensivePanel'
 import { FundamentalPanel } from '@/components/Analysis/FundamentalPanel'
 import api from '@/lib/api'
+import { AlertTriangle } from 'lucide-react'
 
 interface RankItem {
   code: string
@@ -43,14 +44,18 @@ export function RecommendTab() {
   const { selectedStock, setSelectedStock } = useStockStore()
   const [data, setData] = useState<RankingResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [focusedCode, setFocusedCode] = useState<string | null>(null)
 
   const fetchRanking = useCallback(async () => {
     setLoading(true)
+    setFetchError(null)
     try {
       const { data: res } = await api.get<RankingResponse>('/analysis/ai-ranking?limit=50')
       setData(res)
-    } catch {
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setFetchError(msg ?? 'AI 추천 데이터를 불러오지 못했습니다.')
       setData(null)
     } finally {
       setLoading(false)
@@ -90,12 +95,25 @@ export function RecommendTab() {
         {/* 순위 테이블 */}
         <div className="flex-1 min-w-0 overflow-y-auto">
           {loading && (
-            <div className="text-xs text-muted-foreground text-center py-8">AI 점수 분석 중… (최대 1분 소요)</div>
+            <div className="text-xs text-muted-foreground text-center py-8">
+              AI 점수 분석 중… (최대 1분 소요)
+              <div className="text-[10px] mt-1 text-muted-foreground/70">top100 종목 전체를 스캔합니다</div>
+            </div>
           )}
-          {!loading && !data && (
-            <div className="text-xs text-muted-foreground text-center py-8">데이터를 불러올 수 없습니다.</div>
+          {!loading && fetchError && (
+            <div className="flex flex-col items-center gap-2 py-8 px-4 text-center">
+              <AlertTriangle className="h-4 w-4 text-yellow-400" />
+              <span className="text-xs text-destructive">추천 API 조회 실패</span>
+              <span className="text-[10px] text-muted-foreground">{fetchError}</span>
+              <span className="text-[10px] text-muted-foreground">서버 상태를 확인하거나 잠시 후 새로고침해 주세요.</span>
+            </div>
           )}
-          {!loading && data && (
+          {!loading && !fetchError && data && data.ranking.length === 0 && (
+            <div className="text-xs text-muted-foreground text-center py-8">
+              추천 결과가 없습니다. 시장 데이터를 다시 스캔해 주세요.
+            </div>
+          )}
+          {!loading && !fetchError && data && data.ranking.length > 0 && (
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-card border-b border-border">
                 <tr>

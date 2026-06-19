@@ -178,7 +178,9 @@ export function ChartTab() {
           </button>
         ))}
         {loadingIntraday && (
-          <span className="ml-auto text-xs text-muted-foreground">분봉 불러오는 중 · 일봉 임시 표시</span>
+          <span className="ml-auto text-xs text-yellow-400/80">
+            분봉 불러오는 중 · 장 중(09:00~15:30)에만 당일 분봉 조회 가능 · 임시로 일봉 표시
+          </span>
         )}
       </div>
       {showPeriodBar && (
