@@ -3,6 +3,8 @@ import { useStockStore } from '@/store/stockStore'
 import { ComprehensivePanel } from '@/components/Analysis/ComprehensivePanel'
 import { FundamentalPanel } from '@/components/Analysis/FundamentalPanel'
 import api from '@/lib/api'
+import { AlertTriangle } from 'lucide-react'
+import { buildReasonChips, type ReasonChip } from '@/lib/recommendReasons'
 
 interface RankItem {
   code: string
@@ -26,6 +28,30 @@ const SIGNAL_STYLE: Record<string, string> = {
   HOLD: 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/30',
 }
 
+const CHIP_COLOR: Record<ReasonChip['color'], string> = {
+  green: 'text-green-400 bg-green-400/10 border border-green-400/30',
+  yellow: 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/30',
+  red: 'text-red-400 bg-red-400/10 border border-red-400/30',
+  gray: 'text-muted-foreground bg-muted border border-border',
+  blue: 'text-blue-400 bg-blue-400/10 border border-blue-400/30',
+}
+
+function ReasonChips({ item }: { item: RankItem }) {
+  const chips = buildReasonChips(item)
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          className={`px-1 py-0.5 rounded text-[10px] font-medium ${CHIP_COLOR[chip.color]}`}
+        >
+          {chip.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function ScoreBar({ value }: { value: number }) {
   const pct = Math.max(0, Math.min(100, value))
   const color = pct >= 65 ? 'bg-green-500' : pct >= 35 ? 'bg-yellow-500' : 'bg-red-500'
@@ -43,22 +69,48 @@ export function RecommendTab() {
   const { selectedStock, setSelectedStock } = useStockStore()
   const [data, setData] = useState<RankingResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [focusedCode, setFocusedCode] = useState<string | null>(null)
 
   const fetchRanking = useCallback(async () => {
     await Promise.resolve()
     setLoading(true)
+    setFetchError(null)
     try {
       const { data: res } = await api.get<RankingResponse>('/analysis/ai-ranking?limit=50')
       setData(res)
-    } catch {
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setFetchError(msg ?? 'AI 추천 데이터를 불러오지 못했습니다.')
       setData(null)
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { Promise.resolve().then(fetchRanking) }, [fetchRanking])
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOnMount() {
+      setLoading(true)
+      setFetchError(null)
+      try {
+        const { data: res } = await api.get<RankingResponse>('/analysis/ai-ranking?limit=50')
+        if (!cancelled) setData(res)
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        if (!cancelled) {
+          setFetchError(msg ?? 'AI 추천 데이터를 불러오지 못했습니다.')
+          setData(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void fetchOnMount()
+    return () => { cancelled = true }
+  }, [])
 
   const handleSelect = (item: RankItem) => {
     setFocusedCode(item.code)
@@ -91,12 +143,25 @@ export function RecommendTab() {
         {/* 순위 테이블 */}
         <div className="flex-1 min-w-0 overflow-y-auto">
           {loading && (
-            <div className="text-xs text-muted-foreground text-center py-8">AI 점수 분석 중… (최대 1분 소요)</div>
+            <div className="text-xs text-muted-foreground text-center py-8">
+              AI 점수 분석 중… (최대 1분 소요)
+              <div className="text-[10px] mt-1 text-muted-foreground/70">top100 종목 전체를 스캔합니다</div>
+            </div>
           )}
-          {!loading && !data && (
-            <div className="text-xs text-muted-foreground text-center py-8">데이터를 불러올 수 없습니다.</div>
+          {!loading && fetchError && (
+            <div className="flex flex-col items-center gap-2 py-8 px-4 text-center">
+              <AlertTriangle className="h-4 w-4 text-yellow-400" />
+              <span className="text-xs text-destructive">추천 API 조회 실패</span>
+              <span className="text-[10px] text-muted-foreground">{fetchError}</span>
+              <span className="text-[10px] text-muted-foreground">서버 상태를 확인하거나 잠시 후 새로고침해 주세요.</span>
+            </div>
           )}
-          {!loading && data && (
+          {!loading && !fetchError && data && data.ranking.length === 0 && (
+            <div className="text-xs text-muted-foreground text-center py-8">
+              추천 결과가 없습니다. 시장 데이터를 다시 스캔해 주세요.
+            </div>
+          )}
+          {!loading && !fetchError && data && data.ranking.length > 0 && (
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-card border-b border-border">
                 <tr>
@@ -125,6 +190,7 @@ export function RecommendTab() {
                       <td className="px-3 py-2">
                         <div className="font-medium">{item.name}</div>
                         <div className="text-muted-foreground text-[10px]">{item.code}</div>
+                        <ReasonChips item={item} />
                       </td>
                       <td className="px-3 py-2 text-center">
                         <span className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${SIGNAL_STYLE[item.signal] ?? ''}`}>

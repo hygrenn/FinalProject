@@ -157,3 +157,38 @@ export interface RiskSettings {
   enforce_hard_stop: boolean
   trading_blocked: boolean
 }
+
+// ── 시스템 상태 진단 API (/system/status) ──────────────────────────────────
+export interface SystemStatusResponse {
+  backend: {
+    ok: boolean
+    message: string
+  }
+  auth: {
+    logged_in: boolean
+    email: string | null
+  }
+  kis: {
+    mode: 'paper' | 'real' | null
+    configured: boolean
+    account_no: string | null
+    message: string
+  }
+  account: {
+    ok: boolean | null
+    holdings_count: number | null
+    data_source: string | null
+    message: string
+  }
+  portfolio: {
+    ok: boolean | null
+    holding_source: string | null
+    performance_source: string | null
+    message: string
+  }
+  ai: {
+    prediction_source: 'uploaded' | 'local' | 'unavailable'
+    message: string
+  }
+  checked_at: string
+}

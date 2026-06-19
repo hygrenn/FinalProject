@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useStockStore } from '@/store/stockStore'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
@@ -51,15 +51,36 @@ export function RecommendationPanel() {
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'buy' | 'sell'>('buy')
 
-  const load = () => {
-    Promise.resolve()
-      .then(() => { setLoading(true); return api.get<RecommendationResponse>('/analysis/recommendations', { params: { limit: 15 } }) })
-      .then(({ data }) => setData(data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await api.get<RecommendationResponse>('/analysis/recommendations', { params: { limit: 15 } })
+      setData(data)
+    } catch {
+      setData(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOnMount() {
+      setLoading(true)
+      try {
+        const { data } = await api.get<RecommendationResponse>('/analysis/recommendations', { params: { limit: 15 } })
+        if (!cancelled) setData(data)
+      } catch {
+        if (!cancelled) setData(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void fetchOnMount()
+    return () => { cancelled = true }
+  }, [])
 
   const buyList = data?.picks ?? []
   const sellList = data?.sell_warnings ?? []
@@ -69,7 +90,7 @@ export function RecommendationPanel() {
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold">AI 추천 종목</h3>
         <button
-          onClick={load}
+          onClick={() => void load()}
           className="text-[11px] text-muted-foreground hover:text-foreground border border-border rounded px-1.5 py-0.5"
         >
           새로고침

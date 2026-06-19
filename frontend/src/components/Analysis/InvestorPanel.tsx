@@ -45,11 +45,23 @@ export function InvestorPanel() {
   useEffect(() => {
     if (!selectedStock?.code) return
     const code = selectedStock.code
-    Promise.resolve()
-      .then(() => { setLoading(true); setData(null); return api.get<InvestorResponse>(`/analysis/investor/${code}`) })
-      .then(({ data: d }) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      setData(null)
+      try {
+        const { data: d } = await api.get<InvestorResponse>(`/analysis/investor/${code}`)
+        if (!cancelled) setData(d)
+      } catch {
+        if (!cancelled) setData(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
   }, [selectedStock?.code])
 
   if (!selectedStock) return null

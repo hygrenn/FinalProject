@@ -125,24 +125,32 @@ export function MarketTab() {
   const [trend, setTrend] = useState<string>('neutral')
 
   useEffect(() => {
-    Promise.resolve()
-      .then(() => {
-        setLoading(true)
-        return Promise.all([
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      try {
+        const [idxRes, secRes] = await Promise.all([
           api.get<IndicesResponse>('/analysis/indices'),
           api.get<SectorResponse>('/analysis/sector'),
         ])
-      })
-      .then(([idxRes, secRes]) => {
-        setIndices(idxRes.data.indices ?? [])
-        setTrend(idxRes.data.trend ?? 'neutral')
-        if (secRes.data.available) {
-          setSectors(secRes.data.sectors)
-          setSelectedSector(secRes.data.sectors[0] ?? null)
+        if (!cancelled) {
+          setIndices(idxRes.data.indices ?? [])
+          setTrend(idxRes.data.trend ?? 'neutral')
+          if (secRes.data.available) {
+            setSectors(secRes.data.sectors)
+            setSelectedSector(secRes.data.sectors[0] ?? null)
+          }
         }
-      })
-      .catch((_e) => { if (import.meta.env.DEV) console.warn('[MarketTab] 시장 데이터 fetch 실패:', _e) })
-      .finally(() => setLoading(false))
+      } catch (_e) {
+        if (import.meta.env.DEV) console.warn('[MarketTab] 시장 데이터 fetch 실패:', _e)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => { cancelled = true }
   }, [])
 
   // total_stocks를 크기로 사용 (시총 대체)
