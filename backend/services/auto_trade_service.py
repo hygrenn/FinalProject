@@ -32,6 +32,20 @@ _MAX_SINGLE_STOCK_PCT = 0.30   # 한 종목에 총예산의 최대 30%
 _CASH_RESERVE_PCT    = 0.10   # 총예산의 10%는 현금 보유
 
 
+def _calculate_buying_power(total_budget: int, used_cost: int) -> int:
+    """현금 보유 비율을 제외한 실제 매수 가용 금액 계산.
+
+    Args:
+        total_budget: 총 투자 예산 (원)
+        used_cost:    이미 투자된 금액 (보유 종목 평가액 합산, 원)
+
+    Returns:
+        추가 매수 가능 금액 (음수가 되는 경우 0 반환)
+    """
+    investable_limit = int(total_budget * (1 - _CASH_RESERVE_PCT))
+    return max(0, investable_limit - used_cost)
+
+
 async def get_config(user_id: UUID, db: AsyncSession) -> AutoTradeConfig:
     result = await db.execute(
         select(AutoTradeConfig).where(AutoTradeConfig.user_id == user_id)
