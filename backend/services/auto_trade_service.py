@@ -18,7 +18,7 @@ try:
 except Exception:
     _STOCK_NAMES = {}
 
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import HTTPException
@@ -316,8 +316,6 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
     cfg = await get_config(user_id, db)
     if not cfg.enabled:
         return {"skipped": True, "reason": "not_enabled"}
-    if cfg.mode == "real":
-        return {"skipped": True, "reason": "real_mode_not_supported", "message": "자동매매는 모의투자 전용입니다."}
 
     user = await db.get(User, user_id)
     if user is None:
@@ -336,11 +334,40 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             "max_positions_reached": False,
         }
 
+        is_real = cfg.mode == "real"
+
+        # ── real 모드: KIS에서 실제 보유 종목 + 예수금 가져오기 ──────────────
+        real_holdings: list[dict] = []
+        if is_real:
+            try:
+                from services.kis_service import get_balance, get_balance_full
+                bal_full = await get_balance_full(user)
+                real_holdings = bal_full.get("holdings", [])
+                bal = await get_balance(user)
+                available = bal.get("cash", 0)
+            except Exception as exc:
+                logger.warning("KIS 잔고 조회 실패, 사이클 중단: %s", exc)
+                return {"skipped": True, "reason": "kis_balance_failed",
+                        "message": f"KIS 잔고 조회 실패: {exc}"}
+
         # ── 1. 기존 보유 포지션: 손절/익절/AI SELL ────────────────────────
-        holdings_res = await db.execute(
-            select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == cfg.mode)
-        )
-        for holding in holdings_res.scalars().all():
+        if is_real:
+            iter_holdings = [
+                type("H", (), {
+                    "stock_code": h["stock_code"],
+                    "stock_name": h.get("stock_name", h["stock_code"]),
+                    "quantity": h["quantity"],
+                    "avg_price": h["avg_price"],
+                })()
+                for h in real_holdings
+            ]
+        else:
+            holdings_res = await db.execute(
+                select(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == cfg.mode)
+            )
+            iter_holdings = holdings_res.scalars().all()
+
+        for holding in iter_holdings:
             try:
                 price_data = await get_stock_current_price(holding.stock_code)
                 cur = price_data.get("close", 0)
@@ -369,22 +396,29 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
 
             if sell_reason:
                 try:
-                    log = await _execute_paper_order(
-                        user_id, holding.stock_code, holding.stock_name or "",
-                        "SELL", holding.quantity, cur,
-                        sell_reason, cfg.mode, sell_score, db,
-                    )
+                    if is_real:
+                        log = await _execute_real_order(
+                            user, holding.stock_code, holding.stock_name or "",
+                            "SELL", holding.quantity, cur, sell_reason, sell_score, db,
+                        )
+                    else:
+                        log = await _execute_paper_order(
+                            user_id, holding.stock_code, holding.stock_name or "",
+                            "SELL", holding.quantity, cur,
+                            sell_reason, cfg.mode, sell_score, db,
+                        )
                     actions.append(log)
                 except Exception as exc:
                     logger.error("매도 실패 %s: %s", holding.stock_code, exc)
 
         # ── 2. AI 스크리닝 → 신규 매수 ────────────────────────────────────
-        used = sum(int(float(h.avg_price) * h.quantity) for h in (
-            (await db.execute(select(Portfolio).where(
-                Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
-            ))).scalars().all()
-        ))
-        available = _calculate_buying_power(cfg.total_budget, used)
+        if not is_real:
+            used = sum(int(float(h.avg_price) * h.quantity) for h in (
+                (await db.execute(select(Portfolio).where(
+                    Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
+                ))).scalars().all()
+            ))
+            available = _calculate_buying_power(cfg.total_budget, used)
 
         candidates: list[dict] = []
         held: set[str] = set()
@@ -394,12 +428,16 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
         if available > 0:
             candidates = await _get_buy_candidates(db, extra_codes=extra_codes)
 
-            held_res = await db.execute(
-                select(Portfolio.stock_code).where(
-                    Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
+            if is_real:
+                held = {h["stock_code"] for h in real_holdings}
+            else:
+                held_res = await db.execute(
+                    select(Portfolio.stock_code).where(
+                        Portfolio.user_id == user_id, Portfolio.mode == cfg.mode
+                    )
                 )
-            )
-            held = {r[0] for r in held_res.fetchall()}
+                held = {r[0] for r in held_res.fetchall()}
+
             fresh = [
                 c for c in candidates
                 if c["code"] not in held and c["score"] >= cfg.signal_threshold
@@ -409,14 +447,17 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
             diagnostics["max_positions_reached"] = remaining_slots == 0
             fresh = fresh[:remaining_slots]
 
-            allocations = _allocate(fresh, available, cfg.total_budget)
+            # real 모드 budget_ref: KIS 예수금 기반 / paper 모드: cfg.total_budget
+            budget_ref = available if is_real else cfg.total_budget
+            allocations = _allocate(fresh, available, budget_ref)
+
             for alloc in allocations:
                 if available <= 0:
                     break
                 try:
                     price_data = await get_stock_current_price(alloc["code"])
                     cur = price_data.get("close", 0)
-                    name = price_data.get("name", alloc["code"])
+                    name = price_data.get("name", _STOCK_NAMES.get(alloc["code"], alloc["code"]))
                 except Exception:
                     diagnostics["price_fetch_failed"] += 1
                     continue
@@ -443,11 +484,17 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
                 # ─────────────────────────────────────────────────────────────
 
                 try:
-                    log = await _execute_paper_order(
-                        user_id, alloc["code"], name, "BUY", qty, cur,
-                        f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
-                        warning=warning,
-                    )
+                    if is_real:
+                        log = await _execute_real_order(
+                            user, alloc["code"], name, "BUY", qty, cur,
+                            f"AI BUY({alloc['score']:.0f}점)", alloc["score"], db,
+                        )
+                    else:
+                        log = await _execute_paper_order(
+                            user_id, alloc["code"], name, "BUY", qty, cur,
+                            f"AI BUY({alloc['score']:.0f}점)", cfg.mode, alloc["score"], db,
+                            warning=warning,
+                        )
                     actions.append(log)
                     available -= qty * cur
                 except Exception as exc:
@@ -457,7 +504,7 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
         trade_actions = [a for a in actions if a.get("action") in ("BUY", "SELL")]
         no_trade_reason = None
         if not trade_actions:
-            invested = used  # use the pre-calculated invested cost
+            invested = 0 if is_real else used  # real 모드는 KIS 잔고가 이미 반영됨
             invested_str = f"{invested // 100000000}억원" if invested >= 100000000 else (
                 f"{invested // 10000}만원" if invested >= 10000 else f"{invested:,}원"
             )
@@ -486,6 +533,45 @@ async def run_cycle(user_id: UUID, db: AsyncSession, extra_codes: list[str] | No
         }
     finally:
         await _release_run_lock(user_id, lock_token)
+
+
+async def reset_paper_data(user_id: UUID, db: AsyncSession) -> dict[str, Any]:
+    """모의매매 포지션 및 거래 기록 전체 초기화."""
+    await db.execute(
+        delete(Portfolio).where(Portfolio.user_id == user_id, Portfolio.mode == "paper")
+    )
+    await db.execute(
+        delete(AutoTradeLog).where(AutoTradeLog.user_id == user_id)
+    )
+    cfg = await get_config(user_id, db)
+    cfg.enabled = False
+    await db.commit()
+    return {"reset": True, "message": "모의매매가 초기화되었습니다."}
+
+
+async def _execute_real_order(
+    user: Any, stock_code: str, stock_name: str,
+    order_type: str, quantity: int, price: int,
+    reason: str, signal_score: float, db: AsyncSession,
+) -> dict[str, Any]:
+    """실거래 모드: KIS API로 실주문 실행 후 로그 기록."""
+    from services.kis_service import place_order
+
+    result = await place_order(user, stock_code, order_type, "MARKET", quantity, price=0)
+
+    db.add(AutoTradeLog(
+        user_id=user.id, stock_code=stock_code, stock_name=stock_name,
+        action=order_type, quantity=quantity, price=price,
+        total_amount=quantity * price, reason=reason,
+        signal_score=signal_score, mode="real",
+    ))
+    await db.commit()
+
+    return {
+        "action": order_type, "stock_code": stock_code, "stock_name": stock_name,
+        "quantity": quantity, "price": price, "total_amount": quantity * price,
+        "reason": reason, "kis_order_no": result.get("kis_order_no", ""),
+    }
 
 
 async def kill_switch(user_id: UUID, db: AsyncSession) -> dict[str, Any]:

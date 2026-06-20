@@ -7,7 +7,7 @@ import api from '@/lib/api'
 import { useStockStore } from '@/store/stockStore'
 import {
   Bot, Play, Square, RefreshCw, TrendingUp, TrendingDown,
-  ChevronDown, ChevronUp, Clock, BarChart2,
+  ChevronDown, ChevronUp, Clock, BarChart2, Trash2,
 } from 'lucide-react'
 
 interface AutoTradeConfig {
@@ -270,6 +270,22 @@ export function AutoTradePanel() {
     }
   }
 
+  const handleReset = async () => {
+    if (!window.confirm('모의매매 포지션과 거래 기록을 전부 초기화합니다.\n자동매매도 중지됩니다. 계속하시겠습니까?')) return
+    try {
+      await api.post('/auto-trade/reset')
+      setConfig(prev => ({ ...prev, enabled: false }))
+      setLogs([])
+      setScanStocks([])
+      setRunResult(null)
+      setError(null)
+      fetchScan(watchlist)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      setError(err.response?.data?.detail || '초기화 실패')
+    }
+  }
+
   const totalBuy = logs.filter(l => l.action === 'BUY').reduce((s, l) => s + l.total_amount, 0)
   const totalSell = logs.filter(l => l.action === 'SELL').reduce((s, l) => s + l.total_amount, 0)
   const invested = totalBuy - totalSell
@@ -304,8 +320,12 @@ export function AutoTradePanel() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {config.enabled
-                      ? `${formatKRW(config.total_budget)} 운용 · 5분마다 자동 스캔`
-                      : '최근 거래일 종가 기준 모의 자동매매 · 5분 주기'}
+                      ? config.mode === 'real'
+                        ? 'KIS 예수금 기준 실거래 · 5분마다 자동 스캔'
+                        : `${formatKRW(config.total_budget)} 모의 운용 · 5분마다 자동 스캔`
+                      : config.mode === 'real'
+                        ? 'KIS 계좌 예수금 자동 적용 · 실거래 모드'
+                        : '종가 기준 모의 자동매매 · 5분 주기'}
                   </p>
                 </div>
               </div>
@@ -328,25 +348,34 @@ export function AutoTradePanel() {
 
           {/* 예산 입력 */}
           <div className="px-5 py-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <label className="text-xs text-muted-foreground block mb-1">AI에게 맡길 금액</label>
-                <div className="relative">
-                  <Input
-                    type="number"
-                    value={config.total_budget}
-                    onChange={e => setConfig(prev => ({ ...prev, total_budget: Number(e.target.value) }))}
-                    min={10000} step={100000}
-                    className="h-10 text-sm pr-8"
-                    placeholder="1000000"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">원</span>
+            {config.mode === 'real' ? (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-blue-400">실거래 모드 — KIS 예수금 자동 적용</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">예산 별도 설정 불필요. KIS 계좌의 실시간 예수금 기준으로 매매합니다.</p>
                 </div>
               </div>
-              <Button onClick={handleSaveBudget} disabled={saving} className="mt-5 h-10 px-4">
-                {saving ? '저장...' : '설정'}
-              </Button>
-            </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-muted-foreground block mb-1">AI에게 맡길 금액 (모의)</label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      value={config.total_budget}
+                      onChange={e => setConfig(prev => ({ ...prev, total_budget: Number(e.target.value) }))}
+                      min={10000} step={100000}
+                      className="h-10 text-sm pr-8"
+                      placeholder="1000000"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">원</span>
+                  </div>
+                </div>
+                <Button onClick={handleSaveBudget} disabled={saving} className="mt-5 h-10 px-4">
+                  {saving ? '저장...' : '설정'}
+                </Button>
+              </div>
+            )}
 
             {/* 고급 설정 토글 */}
             <button
@@ -400,6 +429,16 @@ export function AutoTradePanel() {
             {config.enabled && (
               <Button variant="destructive" onClick={handleStop} className="h-9 px-4">
                 <Square className="w-3.5 h-3.5 mr-1.5" />긴급 정지
+              </Button>
+            )}
+            {config.mode === 'paper' && !config.enabled && (
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                className="h-9 px-3 text-muted-foreground hover:text-destructive hover:border-destructive"
+                title="모의매매 초기화"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
               </Button>
             )}
           </div>

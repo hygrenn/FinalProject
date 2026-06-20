@@ -129,3 +129,16 @@ async def kill_switch(
     db: AsyncSession = Depends(get_db),
 ):
     return await auto_trade_service.kill_switch(user.id, db)
+
+
+@router.post("/reset")
+@limiter.limit("5/minute")
+async def reset_paper(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    cfg = await auto_trade_service.get_config(user.id, db)
+    if cfg.mode != "paper":
+        raise HTTPException(status_code=400, detail="초기화는 모의매매 모드에서만 가능합니다.")
+    return await auto_trade_service.reset_paper_data(user.id, db)
