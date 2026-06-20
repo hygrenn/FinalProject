@@ -224,7 +224,14 @@ export function AutoTradePanel() {
     try {
       const res = await api.post('/auto-trade/run', { extra_codes: watchlist })
       if (res.data.skipped) {
-        setError('자동매매를 먼저 활성화해 주세요.')
+        const reason = res.data.reason
+        if (reason === 'already_running') {
+          setRunResult('분석 중입니다. 잠시 후 결과가 업데이트됩니다.')
+        } else if (reason === 'not_enabled') {
+          setError('자동매매를 먼저 활성화해 주세요.')
+        } else {
+          setError(res.data.message || '실행을 건너뛰었습니다.')
+        }
       } else {
         const { executed, scanned, held_count, no_trade_reason } = res.data
         if (executed > 0) {
