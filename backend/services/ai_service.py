@@ -116,6 +116,7 @@ async def calculate_signal(code: str, db: AsyncSession | None = None) -> dict:
         },
         "lstm_available": lstm_available,
         "as_of": datetime.now(_KST).isoformat(),
+        "indicators": indicators,
     }
 
     if db is not None:
